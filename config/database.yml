@@ -1,0 +1,26 @@
+development:
+  adapter: mysql2
+  encoding: utf8
+  database: phototank
+  username: deploy
+  password: bart
+  host: 127.0.0.1
+  port: 3306
+
+test:
+  adapter: mysql2
+  encoding: utf8
+  database: phototank_test
+  username: deploy
+  password: bart
+  host: 127.0.0.1
+  port: 3306
+
+production:
+  adapter: mysql2
+  encoding: utf8
+  database: phototank
+  username: deploy
+  password: bart
+  host: 192.168.2.103
+  port: 3306

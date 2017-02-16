@@ -1,0 +1,17 @@
+production:
+  environment: production
+  instance_name: "Hinge"
+  #filestorepath: "/media/external/photos/phototank/photofiles"
+  filestoreurl: "http://192.168.2.103"
+
+development:
+  environment: development
+  instance_name: "dev_Hinge"
+  filestorepath: "/Users/martinhinge/Pictures/ROR_PT/phototank"
+  filestoreurl: "http://localhost:5001"
+
+test:
+  environment: test
+  instance_name: "test_Hinge"
+  filestorepath: "/Users/martinhinge/Pictures/test_migrate"
+  filestoreurl: "http://localhost:5001"
