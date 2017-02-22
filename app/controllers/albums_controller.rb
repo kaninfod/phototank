@@ -15,10 +15,11 @@ class AlbumsController < ApplicationController
   end
 
   def index
-    order = params[:order] unless not params.has_key?(:order)
-    query = "%#{params[:q]}%"
-    query ||="%"
-    @albums = Album.order(order).where("name LIKE ?", query).paginate(:page => params[:page], :per_page => 20)
+    # order = params[:order] unless not params.has_key?(:order)
+    # query = "%#{params[:q]}%"
+    # query ||="%"
+    # @albums = Album.order(order).where("name LIKE ?", query).paginate(:page => params[:page], :per_page => 20)
+    @albums = Album.all
   end
 
   def edit

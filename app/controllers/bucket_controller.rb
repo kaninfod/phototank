@@ -1,28 +1,56 @@
 class BucketController < ApplicationController
-  before_action :require_login
   include BucketActions
 
   def add
-    session[:bucket].push params[:id].to_i
-    render :json => {'count' => session[:bucket].count}
+    if Photo.where(id: params[:id]).present?
+      Bucket.create(user: @current_user.id, photo_id: params[:id])
+      @bucket = Bucket.where(user: @current_user.id)
+      render :status => 200, json: {
+        msg: "Photo added to bucket",
+        photo_id: params[:id],
+        bucket: @bucket
+      }
+    else
+      render :status => 404, json: {error: "photo not found"}
+    end
+
   end
 
   def remove
-    session[:bucket].delete(params[:id].to_i)
-    render :json => {'count' => session[:bucket].count}
+    entry = Bucket.where(user: @current_user.id, photo_id: params[:id])
+    if entry.count == 1
+      entry.first.destroy
+      @bucket = Bucket.where(user: @current_user.id)
+      render :status => 200, json: {
+        msg: "Photo removed from bucket",
+        photo_id: params[:id],
+        bucket: @bucket
+      }
+    else
+      render :status => 404, json: {error: "photo not in bucket"}
+    end
   end
 
   def toggle
-    if session[:bucket].include? params[:id].to_i
-      puts "removing #{params[:id]} to bucket: #{session[:bucket]}"
-      session[:bucket].delete(params[:id].to_i)
+    entry = Bucket.where(user: @current_user.id, photo_id: params[:id])
+    if entry.count == 1
+      entry.first.destroy
+      code = 200
+      msg = "Photo removed from bucket"
+      action= 'removed'
+    elsif Photo.where(id: params[:id]).present?
+      Bucket.create(user: @current_user.id, photo_id: params[:id])
+      code = 201
+      msg = "Photo added to bucket"
+      action= 'added'
     else
-      puts "adding #{params[:id]} to bucket: #{session[:bucket]}"
-      session[:bucket].push params[:id].to_i
-      puts "added #{params[:id]} to bucket: #{session[:bucket]}"
+      code = 404
+      msg = "can't do anything"
+      action= 'error'
     end
-    puts session[:bucket]
-    render :json => {'count' => session[:bucket].count, :bucket =>session[:bucket]}
+    @bucket = Bucket.where(user: @current_user.id)
+    render :status => code, json: {action: action, msg: msg, photo_id: params[:id], bucket: @bucket}
+
   end
 
   def clear
@@ -35,12 +63,12 @@ class BucketController < ApplicationController
   end
 
   def index
-    @bucket = get_bucket
-    @photos = Photo.where(id:@bucket).page params[:page]
+    @bucket = Bucket.where(user: @current_user.id)
+    # @photos = Photo.where(id:@bucket).page params[:page]
     #If this was requested from an ajax call it should be rendered with slim view
-    if request.xhr?
-      render :partial=>"photos/grid"
-    end
+    # if request.xhr?
+    #   render :partial=>"photos/grid"
+    # end
   end
 
   def list

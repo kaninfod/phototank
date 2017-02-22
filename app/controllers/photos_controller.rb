@@ -58,7 +58,7 @@ class PhotosController < ApplicationController
     @album = Album.new(album_hash)
     #Get photos
     @photos = @album.photos.where('photos.status != ? or photos.status is ?', 1, nil).order(date_taken: order).paginate(:page => params[:page], :per_page=>60)
-
+    @bucket = Bucket.where(user: @current_user.id)
     #get distinct data for dropdowns
     #prep_form
 
@@ -112,16 +112,18 @@ class PhotosController < ApplicationController
 
   def destroy
     photo = Photo.find(params[:id])
-    photo.delete
-    respond_to do |format|
-      format.html {
-        flash[:notice] = 'Photo has been queued for deletion'
-        redirect_to request.referer
-      }
-      format.json {
-        render json: {:notice=>'Photo has been queued for deletion'}
-      }
+    if photo.delete
+      render json: {:status=> 200, photo_id: photo.id}
     end
+    # respond_to do |format|
+    #   format.html {
+    #     flash[:notice] = 'Photo has been queued for deletion'
+    #     redirect_to request.referer
+    #   }
+    #   format.json {
+    #     render json: {:notice=>'Photo has been queued for deletion'}
+    #   }
+    # end
 
   end
 

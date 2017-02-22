@@ -7,6 +7,7 @@ class Photo < ActiveRecord::Base
 
   has_many :instances
   has_many :catalogs, through: :instances
+  has_one :bucket
 
   acts_as_commentable
   acts_as_votable

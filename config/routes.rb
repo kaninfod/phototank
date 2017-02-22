@@ -50,7 +50,7 @@ Rails.application.routes.draw do
 
   post 'bucket/:id/toggle' => 'bucket#toggle'
   post 'bucket/:id/add' => 'bucket#add'
-  post 'bucket/:id/remove' => 'bucket#remove'
+  delete 'bucket/:id/remove' => 'bucket#remove'
   get  'bucket/list' => 'bucket#list'
   get  'bucket' => 'bucket#index'
   get  'bucket/clear' => 'bucket#clear'
