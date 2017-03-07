@@ -1,8 +1,10 @@
 class LocationsController < ApplicationController
-  before_action :require_login
+
+  def countries
+    @countries = Location.distinct_countries
+  end
 
   def index
-
     if request.xhr?
       order = :country
       order = params[:order] unless not params.has_key?(:order)
@@ -13,10 +15,6 @@ class LocationsController < ApplicationController
 
     end
   end
-
-
-
-
 
   def show
     @bucket = session[:bucket]

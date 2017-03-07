@@ -14,8 +14,9 @@ json.photo do
     json.country @photo.location.country
     json.map_url @photo.location.map_url
   end
-json.partial! 'photos/comments', comments: @photo.comments
 end
+json.partial! 'photos/comments', comments: @photo.comments
+json.tags         @photo.tags
 json.albums @albums do |album|
   json.id album.id
   json.name album.name

@@ -1,7 +1,7 @@
 
 class PhotosController < ApplicationController
   include BucketActions
-
+   set_pagination_headers :photos, only: [:index]
 
   def image
     @photo = set_photo
@@ -27,14 +27,14 @@ class PhotosController < ApplicationController
 
     if params.has_key? :direction
       case params[:direction]
-      when "true"
-        album_hash[:start] = params[:startdate]
-        @searchparams[:direction] = "true"
-        order = "asc"
-      when "false"
-        album_hash[:end] = params[:startdate]
-        @searchparams[:direction] = "false"
-        order = "desc"
+        when "true"
+          album_hash[:start] = params[:startdate]
+          @searchparams[:direction] = "true"
+          order = "asc"
+        when "false"
+          album_hash[:end] = params[:startdate]
+          @searchparams[:direction] = "false"
+          order = "desc"
       end
     else
       order = "desc"
@@ -51,22 +51,17 @@ class PhotosController < ApplicationController
     end
 
     if params.has_key? "tags"
-      tags = params[:tags].map{|t| ActsAsTaggableOn::Tag.all.where(name: t).first.id}
-      album_hash[:tags] = tags
+      if params[:tags].is_a?(Array)
+        tags = params[:tags].map{|t| ActsAsTaggableOn::Tag.all.where(name: t).first.id}
+        album_hash[:tags] = tags
+      end
     end
 
     @album = Album.new(album_hash)
     #Get photos
     @photos = @album.photos.where('photos.status != ? or photos.status is ?', 1, nil).order(date_taken: order).paginate(:page => params[:page], :per_page=>60)
-    @bucket = Bucket.where(user: @current_user.id)
-    #get distinct data for dropdowns
-    #prep_form
 
-    #If this was requested from an ajax call it should be rendered with slim view
-    #if request.xhr?
-
-      #render :partial=>"photos/grid"
-    #end
+    #@bucket = Bucket.where(user: @current_user.id)
   end
 
   def show
@@ -78,11 +73,6 @@ class PhotosController < ApplicationController
     @photo = Photo.find(params[:id])
     @bucket = session[:bucket]
     @albums = Album.all
-    # render json:
-    # respond_to do |format|
-    #   format.html { render :template => "photos/show_#{params[:view]}", :layout => false}
-    #   format.json
-    # end
   end
 
   def edit
@@ -181,8 +171,12 @@ class PhotosController < ApplicationController
 
   def get_tag_list
     if params.has_key?(:photo_id)
-      photo=Photo.find params[:photo_id]
-      taglist = photo.tags
+      photo = Photo.where(id: params[:photo_id])
+      if !photo.empty?
+        taglist = photo.first.tags
+      else
+        taglist = []
+      end
     elsif params.has_key?(:term)
       query_string = params[:term]
       taglist = ActsAsTaggableOn::Tag.where("name like ?", "%#{query_string}%").limit(10)
@@ -235,10 +229,10 @@ class PhotosController < ApplicationController
     params.require(:album).permit(:start, :end, :name, :make, :model, :country, :city, :photo_ids, :album_type)
   end
 
-  def prep_form
+  def getCountries
     @countries = Location.distinct_countries
     @countries[0] = "All"
-    @bucket = session[:bucket]
+    #@bucket = session[:bucket]
   end
 
     # Use callbacks to share common setup or constraints between actions.

@@ -48,9 +48,16 @@ class BucketController < ApplicationController
       msg = "can't do anything"
       action= 'error'
     end
-    @bucket = Bucket.where(user: @current_user.id)
-    render :status => code, json: {action: action, msg: msg, photo_id: params[:id], bucket: @bucket}
 
+    @output = {
+      status: code,
+      response: {
+        action: action,
+        msg: msg,
+        photo_id: params[:id],
+        bucket: Bucket.where(user: @current_user.id)
+      }
+    }
   end
 
   def clear
@@ -64,38 +71,24 @@ class BucketController < ApplicationController
 
   def index
     @bucket = Bucket.where(user: @current_user.id)
-    # @photos = Photo.where(id:@bucket).page params[:page]
-    #If this was requested from an ajax call it should be rendered with slim view
-    # if request.xhr?
-    #   render :partial=>"photos/grid"
-    # end
   end
 
-  def list
-    @bucket = get_bucket
-    @photos_in_bucket = Photo.where(id:@bucket)
-    @photos_in_bucket =  @photos_in_bucket.index_by(&:id).values_at(*@bucket)
-    respond_to do |format|
-      format.html {
-        render :partial => "list"
-      }
-      format.json {
-        render json: {:bucket=>@bucket}
-      }
-    end
-
+  def widget
+    @bucket = Bucket.where(user: @current_user.id)
+    @albums = Album.all
   end
 
-  def save_to_album
+  def add_to_album
     if params.has_key? :album_id
+      bucket = Bucket.where(user: @current_user.id)
       if params[:album_id].to_i == -1
         album = Album.new
         album.name = "Saved from bucket"
-        album.photo_ids = session[:bucket]
+        album.photo_ids = bucket.pluck(:id)
         album.save
       else
         album = Album.find params[:album_id]
-        album.photo_ids = [*album.photo_ids, *session[:bucket]]
+        album.photo_ids = [*album.photo_ids, *bucket.pluck(:id)]
         album.save
       end
     end
@@ -103,34 +96,50 @@ class BucketController < ApplicationController
 
   end
 
-  def delete_photos
-    session[:bucket].each do |photo_id|
-      Photo.find(photo_id).delete
-    end
-    @bucket = get_bucket
-    session[:bucket] = []
-    respond_to do |format|
-      format.html {
-        redirect_to bucket_path
-      }
-      format.json {
-        render json: {:bucket=>@bucket}
-      }
+  def rotate
+    if params.has_key? "degrees"
+      bucket = Bucket.where(user: @current_user.id)
+      rotate_helper(bucket.pluck(:photo_id), params[:degrees])
+      render :json => {:bucket => bucket.pluck(:id)}
+    else
+      render :status => 304, json: {error: "no params"}
     end
   end
 
-  def rotate
-
-    @bucket = get_bucket
-    rotate_helper(@bucket, params[:degrees])
-    respond_to do |format|
-      format.html {
-        redirect_to bucket_path
-      }
-      format.json {
-        render json: {:bucket=>@bucket}
-      }
+  def like
+    bucket = Bucket.where(user: @current_user.id)
+    bucket.each do |bucket|
+      bucket.photo.liked_by current_user
     end
+    render :json => {:bucket => bucket.pluck(:id)}
+  end
+
+  def unlike
+    bucket = Bucket.where(user: @current_user.id)
+    bucket.each do |bucket|
+      bucket.photo.unliked_by current_user
+    end
+    render :json => {:bucket => bucket.pluck(:id)}
+  end
+
+  def add_tag
+    if params.has_key? "tag"
+      bucket = Bucket.where(user: @current_user.id)
+      bucket.each do |bucket|
+        bucket.photo.add_tag params[:tag]
+      end
+    end
+    render :json => {:status => "OK"}
+  end
+
+  def add_comment
+    if params.has_key? "comment"
+      bucket = Bucket.where(user: @current_user.id)
+      bucket.each do |bucket|
+        bucket.photo.add_comment params[:comment], current_user.id
+      end
+    end
+    render :json => {:status => "OK"}
   end
 
   def edit
@@ -151,31 +160,36 @@ class BucketController < ApplicationController
     redirect_to session[:finalurl]
   end
 
-  def like
+  def delete_photos
     session[:bucket].each do |photo_id|
-      photo = Photo.find(photo_id)
-      photo.liked_by current_user
+      Photo.find(photo_id).delete
     end
-    render :json => {:status => "OK"}
+    @bucket = get_bucket
+    session[:bucket] = []
+    respond_to do |format|
+      format.html {
+        redirect_to bucket_path
+      }
+      format.json {
+        render json: {:bucket=>@bucket}
+      }
+    end
   end
 
-  def unlike
-    session[:bucket].each do |photo_id|
-      photo = Photo.find(photo_id)
-      photo.unliked_by current_user
+  def list
+    @bucket = get_bucket
+    @photos_in_bucket = Photo.where(id:@bucket)
+    @photos_in_bucket =  @photos_in_bucket.index_by(&:id).values_at(*@bucket)
+    respond_to do |format|
+      format.html {
+        render :partial => "list"
+      }
+      format.json {
+        render json: {:bucket=>@bucket}
+      }
     end
-    render :json => {:status => "OK"}
-  end
 
-  def add_comment
-    if params.has_key? "comment"
-      session[:bucket].each do |photo_id|
-        comment = add_comment_helper(photo_id, params[:comment])
-      end
-    end
-    render :json => {:status => "OK"}
   end
-
 
   private
 

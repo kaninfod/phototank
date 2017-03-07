@@ -10,4 +10,4 @@ end
 
 json.pagi will_paginate
 
-json.bucket @bucket
+# json.bucket @bucket

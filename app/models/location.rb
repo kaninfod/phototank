@@ -4,7 +4,7 @@ class Location < ActiveRecord::Base
   reverse_geocoded_by :latitude, :longitude
 
   scope :distinct_countries, -> {
-    ary = select(:country).distinct.map { |c| [c.country] }.unshift([''])
+    ary = select(:country).distinct.map { |c| c.country }.unshift('All')
     ary.delete([nil])
     ary.sort_by{|el| el[0] }
   }
