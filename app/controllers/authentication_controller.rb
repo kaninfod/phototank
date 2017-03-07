@@ -11,4 +11,19 @@ class AuthenticationController < ApplicationController
       render json: { error: command.errors }, status: :unauthorized
     end
   end
+
+  def validate_token
+    @current_user = AuthorizeApiRequest.call(request.headers).result
+    if @current_user
+      render json: {
+        Authorized: true,
+        token: request.headers['Authorization'],
+        user_name: @current_user.name,
+        avatar: @current_user.avatar,
+        email: @current_user.email,
+        }, status: 200
+    else
+      render json: { error: 'Not Authorized' }, status: 401
+    end
+  end
 end

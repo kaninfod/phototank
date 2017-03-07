@@ -1,6 +1,8 @@
 Rails.application.routes.draw do
 
   post 'authenticate', to: 'authentication#authenticate'
+  get 'authentication/validate', to: 'authentication#validate_token'
+
 
   resources :photofiles
   get 'photofiles/:id/photoserve' => 'photofiles#photoserve'
@@ -39,6 +41,7 @@ Rails.application.routes.draw do
   get "/catalogs/:id/destroy" => "catalogs#destroy"
   match '/catalogs/:id/import' => 'catalogs#import', via: [:get, :post]
 
+  get '/locations/countries'
   get '/locations/create'
   get '/locations/new'
   get '/locations/lookup_address'
@@ -48,19 +51,23 @@ Rails.application.routes.draw do
   resources :locations
   get '/locations/:id/view' => 'locations#view'
 
-  post 'bucket/:id/toggle' => 'bucket#toggle'
-  post 'bucket/:id/add' => 'bucket#add'
-  delete 'bucket/:id/remove' => 'bucket#remove'
+  post    'bucket/:id/toggle'     => 'bucket#toggle'
+  post    'bucket/:id/add'        => 'bucket#add'
+  post    'bucket/add_to_album'   => 'bucket#add_to_album'
+  delete  'bucket/:id/remove'     => 'bucket#remove'
+  post    'bucket/like'           => 'bucket#like'
+  post    'bucket/unlike'         => 'bucket#unlike'
+  get     'bucket/widget'         => 'bucket#widget'
+  post    '/bucket/rotate'        => 'bucket#rotate'
+  post    'bucket/add_comment'    => 'bucket#add_comment'
+  post    'bucket/add_tag'    => 'bucket#add_tag'
+
   get  'bucket/list' => 'bucket#list'
   get  'bucket' => 'bucket#index'
   get  'bucket/clear' => 'bucket#clear'
   get  'bucket/count' => 'bucket#count'
   get  'bucket/save' => 'bucket#save_to_album'
   get  'bucket/delete_photos' => 'bucket#delete_photos'
-  get '/bucket/rotate/(:degrees)' => 'bucket#rotate'
-  get  'bucket/like' => 'bucket#like'
-  get  'bucket/unlike' => 'bucket#unlike'
-  get  'bucket/add_comment' => 'bucket#add_comment'
   get  'bucket/edit' => 'bucket#edit'
   patch  'bucket/update' => 'bucket#update'
 

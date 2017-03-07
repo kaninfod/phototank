@@ -1,5 +1,4 @@
 class CatalogsController < ApplicationController
-  before_action :require_login
   def index
     #if request.xhr?
       @catalogs = Catalog.order(:id).page params[:page]

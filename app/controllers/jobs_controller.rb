@@ -1,5 +1,5 @@
 class JobsController < ApplicationController
-  before_action :require_login 
+  
   def list
     if params.has_key?("query")
       if params[:query] == "failed"

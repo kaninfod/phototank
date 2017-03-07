@@ -28,6 +28,7 @@ gem 'bcrypt', '~> 3.1.7'
 #added
 gem 'will_paginate'
 
+
 gem 'geocoder'
 gem 'mini_exiftool'
 gem 'phashion'
