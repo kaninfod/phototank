@@ -1,8 +1,6 @@
 class CatalogsController < ApplicationController
   def index
-    #if request.xhr?
       @catalogs = Catalog.order(:id).page params[:page]
-    #end
   end
 
   def new
