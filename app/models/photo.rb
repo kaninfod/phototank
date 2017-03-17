@@ -76,6 +76,12 @@ class Photo < ActiveRecord::Base
     return hash
   end
 
+  def self.null_photo
+    id = 2076
+    "api/photofiles/#{id}/photoserve"
+
+  end
+
   def similar(similarity=1, count=3)
     Photo.where("HAMMINGDISTANCE(#{self.phash}, phash) < ?", similarity)
       .limit(count)

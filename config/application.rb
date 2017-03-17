@@ -16,7 +16,7 @@ require "rails/test_unit/railtie"
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
 
-module Pt
+module Phototank
   class Application < Rails::Application
     # Settings in config/environments/* take precedence over those specified here.
     # Application configuration should go into files in config/initializers
@@ -29,8 +29,8 @@ module Pt
 
     # TODO: this should be put into an initializer
     config.active_job.queue_adapter = :resque
-    config.x.flickr = config_for(:app_flickr)
-    config.x.dropbox = config_for(:app_dropbox)
+    config.flickr = config_for(:app_flickr)
+    config.dropbox = config_for(:app_dropbox)
     config.x.phototank = config_for(:app_phototank)
 
     module ApiApp

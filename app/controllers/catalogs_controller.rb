@@ -12,6 +12,42 @@ class CatalogsController < ApplicationController
     ]
   end
 
+  def create_c
+
+
+    name =params[:name]
+    type = params[:type]
+
+    case params[:type]
+      when 'MasterCatalog'
+
+      when 'LocalCatalog'
+
+      when 'DropboxCatalog'
+        @catalog = DropboxCatalog.new(name: params[:name])
+        @catalog.redirect_uri = request.base_url
+        @catalog.save
+        @auth_url = @catalog.auth
+      when 'FlickrCatalog'
+
+    end
+    render :json => { auth_url: @auth_url, catalog: @catalog }
+
+
+  end
+
+def verify_dropbox
+  id = params[:id]
+  verifier = params[:verifier]
+  catalog = DropboxCatalog.find(id)
+  catalog.update(verifier: verifier)
+  if catalog.callback
+    render :json => { catalog: DropboxCatalog.find(id) }
+  else
+    render :json => { error: 'nogo' }
+  end
+end
+
   def create
     if ["DropboxCatalog", "FlickrCatalog"].include? params[:catalog][:type]
       redirect_to "/catalogs/authorize?name=#{params[:catalog][:name]}&type=#{params[:catalog][:type]}"
@@ -40,7 +76,7 @@ class CatalogsController < ApplicationController
 
   def update
     catalog = Catalog.find(params[:id])
-
+    puts params[:type]
     case params[:type]
       when "MasterCatalog"
         catalog_attribs = update_master
@@ -53,8 +89,7 @@ class CatalogsController < ApplicationController
     end
 
     if catalog.update(catalog_attribs)
-      flash[:notice] = 'Catalog was successfully updated.'
-      redirect_to action: 'dashboard'
+      render :json => { catalog: catalog }
     end
   end
 
@@ -111,7 +146,6 @@ class CatalogsController < ApplicationController
         redirect_to auth_url
       end
     end
-
   end
 
   def authorize_callback
@@ -125,7 +159,6 @@ class CatalogsController < ApplicationController
         end
       end
     else
-
     end
   end
 

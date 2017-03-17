@@ -30,6 +30,10 @@ Rails.application.routes.draw do
 
 
 
+  post '/catalogs/create_c'  => 'catalogs#create_c'
+  post '/catalogs/verify_dropbox'  => 'catalogs#verify_dropbox'
+
+
   get '/catalogs/migrate' => 'catalogs#migrate'
   get '/catalogs/authorize' => 'catalogs#authorize'
   put '/catalogs/authorize' => 'catalogs#authorize'

@@ -112,7 +112,6 @@ class PhotofilesController < ApplicationController
     rescue ActiveRecord::RecordNotFound
       @photo = Photofile.find(Setting.generic_image_tm_id)
       send_file @photo.path, type: 'image/jpeg', :disposition => 'inline'
-      #render status:404, json: {:error=>"photo with #{params[:id]} does not exist"}
     end
   end
 
@@ -124,37 +123,4 @@ class PhotofilesController < ApplicationController
       url_for(action: 'photoserve', controller: 'photofiles', only_path: false, protocol: 'http', id: id)
     end
   end
-
-  # def file_handler(string, photo=nil)
-  #
-  #   decoded_file = Base64.decode64(string)
-  #   file = Tempfile.new("temp.tmp")
-  #   begin
-  #     file.binmode
-  #     file.write decoded_file
-  #     mime = FileMagic.new(FileMagic::MAGIC_MIME).file(file.path)
-  #
-  #     if ALLOWED_MIMES.include? mime
-  #       if photo.nil?
-  #         #filename = [*'a'..'z', *'A'..'Z', *0..9].shuffle.permutation(13).next.join
-  #         #filepath = File.join(PATH, filename)
-  #         photo = Photofile.create(path: filepath)
-  #       else
-  #         filepath = photo.path
-  #         FileUtils.rm filepath
-  #         photo.touch
-  #       end
-  #       FileUtils.cp file.path, filepath
-  #       photo.url = get_url(photo.id)
-  #       return photo
-  #     end
-  #
-  #   ensure
-  #     file.close
-  #     file.unlink
-  #   end
-  #
-  # end
-  #
-
 end
