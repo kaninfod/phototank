@@ -6,20 +6,16 @@ class DropboxCatalog < Catalog
   def auth
     self.appkey = Rails.configuration.dropbox["appkey"]
     self.appsecret = Rails.configuration.dropbox["appsecret"]
-    puts self.appkey
     base_url = self.redirect_uri
     url_ext = "/catalogs/authorize_callback"
-
     self.redirect_uri = "#{base_url}#{url_ext}"
-    self.save
-
     flow = DropboxOAuth2FlowNoRedirect.new(self.appkey, self.appsecret)
-    authorize_url = flow.start()
+    self.auth_url = flow.start()
+    self.save
   end
 
   def callback
     begin
-      puts 'GOING'
       flow = DropboxOAuth2FlowNoRedirect.new(self.appkey, self.appsecret)
       puts flow
       access_token, user_id = flow.finish(self.verifier)
@@ -97,6 +93,14 @@ class DropboxCatalog < Catalog
 
       logger.debug "#{e}"
     end
+  end
+
+  def auth_url=(new_auth_url)
+    self.ext_store_data = self.ext_store_data.merge({:auth_url => new_auth_url})
+  end
+
+  def auth_url
+    self.ext_store_data[:auth_url]
   end
 
   def appkey=(new_appkey)

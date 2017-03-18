@@ -1,5 +1,5 @@
 class Catalog < ActiveRecord::Base
-  include ActiveModel::Serializers::JSON
+  # include ActiveModel::Serializers::JSON
   serialize :watch_path, Array
   serialize :sync_from_albums, Array
 

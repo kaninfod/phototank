@@ -1,16 +1,19 @@
 class MasterCatalog < Catalog
   include RailsSettings::Extend
   validates :type, uniqueness: true
+
   def import
     return if self.settings.updating == true
 
     begin
+      job = []
       self.watch_path.each do |import_path|
-        MasterImportSpawn.perform_later import_path, photo_id = nil, import_mode=self.import_mode
+        response = MasterImportSpawn.perform_later import_path, photo_id = nil, import_mode=self.import_mode
+        job.push(response)
       end
-      return true
+      return job
     rescue Exception => e
-      raise e
+      return e
     end
   end
 

@@ -3,50 +3,49 @@ class CatalogsController < ApplicationController
       @catalogs = Catalog.order(:id).page params[:page]
   end
 
-  def new
-    @catalog = Catalog.new
-    @catalog_options = [
-      ['Local','LocalCatalog'],
-      ['Dropbox','DropboxCatalog'],
-      ['Flickr','FlickrCatalog']
-    ]
-  end
+  # def new
+  #   @catalog = Catalog.new
+  #   @catalog_options = [
+  #     ['Local','LocalCatalog'],
+  #     ['Dropbox','DropboxCatalog'],
+  #     ['Flickr','FlickrCatalog']
+  #   ]
+  # end
 
   def create_c
-
-
     name =params[:name]
     type = params[:type]
 
     case params[:type]
       when 'MasterCatalog'
-
+        catalog_attribs = params.permit({:watch_path => []}, :default, :name, :type, :path, :import_mode)
+        catalog = Catalog.create(catalog_attribs)
       when 'LocalCatalog'
 
       when 'DropboxCatalog'
-        @catalog = DropboxCatalog.new(name: params[:name])
-        @catalog.redirect_uri = request.base_url
-        @catalog.save
-        @auth_url = @catalog.auth
+        catalog = DropboxCatalog.new(name: params[:name])
+        catalog.redirect_uri = request.base_url
+        catalog.save
+        auth_url = catalog.auth #Not necessary
       when 'FlickrCatalog'
 
     end
-    render :json => { auth_url: @auth_url, catalog: @catalog }
+    render :json => { catalog: catalog }
 
 
   end
 
-def verify_dropbox
-  id = params[:id]
-  verifier = params[:verifier]
-  catalog = DropboxCatalog.find(id)
-  catalog.update(verifier: verifier)
-  if catalog.callback
-    render :json => { catalog: DropboxCatalog.find(id) }
-  else
-    render :json => { error: 'nogo' }
+  def verify_dropbox
+    id = params[:id]
+    verifier = params[:verifier]
+    catalog = DropboxCatalog.find(id)
+    catalog.update(verifier: verifier)
+    if catalog.callback
+      render :json => { catalog: DropboxCatalog.find(id) }
+    else
+      render :json => { error: 'nogo' }
+    end
   end
-end
 
   def create
     if ["DropboxCatalog", "FlickrCatalog"].include? params[:catalog][:type]
@@ -116,9 +115,8 @@ end
 
   def import
     catalog = Catalog.find(params[:id])
-    catalog.import
-    flash[:success] = "Checking for new photos to import to #{catalog.name}"
-    redirect_to action: "dashboard", id: params[:id]
+    response = catalog.import
+    render :json => { response: response }
   end
 
   def get_catalog

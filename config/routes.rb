@@ -32,7 +32,7 @@ Rails.application.routes.draw do
 
   post '/catalogs/create_c'  => 'catalogs#create_c'
   post '/catalogs/verify_dropbox'  => 'catalogs#verify_dropbox'
-
+  get  '/catalogs/:id/import' => 'catalogs#import'
 
   get '/catalogs/migrate' => 'catalogs#migrate'
   get '/catalogs/authorize' => 'catalogs#authorize'
@@ -43,7 +43,7 @@ Rails.application.routes.draw do
   get '/catalogs/:id/get_catalog' => 'catalogs#get_catalog'
   match "/catalogs/:id/edit" => "catalogs#edit", via: [:get, :post]
   get "/catalogs/:id/destroy" => "catalogs#destroy"
-  match '/catalogs/:id/import' => 'catalogs#import', via: [:get, :post]
+  # match '/catalogs/:id/import' => 'catalogs#import', via: [:get, :post]
 
   get '/locations/countries'
   get '/locations/create'
