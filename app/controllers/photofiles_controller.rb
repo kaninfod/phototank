@@ -30,7 +30,7 @@ class PhotofilesController < ApplicationController
       mime = FileMagic.new(FileMagic::MAGIC_MIME).file(file.path)
 
       if ALLOWED_MIMES.include? mime
-        @photo = Photofile.create(path: file.path, datahash: params)
+          @photo = Photofile.create(path: file.path, datahash: params)
         @photo.url = get_url(@photo.id)
       end
 

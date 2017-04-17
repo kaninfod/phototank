@@ -8,6 +8,7 @@ class Photo < ActiveRecord::Base
   has_many :instances
   has_many :catalogs, through: :instances
   has_one :bucket
+  has_many :jobs, as: :jobable
 
   acts_as_commentable
   acts_as_votable
@@ -40,14 +41,11 @@ class Photo < ActiveRecord::Base
     find_by_sql(sql)
   }
 
-
-
   def date_taken_is_valid_datetime
     if ((DateTime.parse(date_taken.to_s) rescue ArgumentError) == ArgumentError)
       errors.add(:date_taken, 'must be a valid datetime')
     end
   end
-
 
   def date_taken_formatted
     date_taken.strftime("%b %d %Y %H:%M:%S")
@@ -77,9 +75,8 @@ class Photo < ActiveRecord::Base
   end
 
   def self.null_photo
-    id = 2076
+    id = Setting.generic_image_md_id
     "api/photofiles/#{id}/photoserve"
-
   end
 
   def similar(similarity=1, count=3)
@@ -110,9 +107,7 @@ class Photo < ActiveRecord::Base
   end
 
   def locate
-    if Location.locate_photo(self)
-      self.save
-    end
+    UtilLocator.perform_later self.id
   end
 
   def rotate(degrees)

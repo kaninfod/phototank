@@ -1,57 +1,28 @@
 class Photofile < ActiveRecord::Base
   attr_accessor :data, :url, :datahash, :phash
-  validates :path, presence: true
-  before_create :import_file
-  before_update :update_file
-  before_destroy :delete_file
+  before_create :import
+  before_destroy :_delete
 
-  PATH = Rails.configuration.x.photoserve["filestorepath"]
+  PATH = Rails.configuration.phototank["filestorepath"]
 
-  def update_file
-    begin
-      FileUtils.cp self.data, self.path
-      self.touch
-    rescue Exception => e
-      byebug
+  def import
+    case self.data[:filetype]
+    when "date"
+      dh = _datehash(self.data[:date])
+      filename = "#{dh[:datestring]}_#{self.data[:size]}_#{dh[:unique]}.jpg"
+      path = File.join(PATH, dh[:year].to_s, dh[:month].to_s, dh[:day].to_s)
+      self.size = self.data[:size]
+    else
+      filename = [*'a'..'z', *'A'..'Z', *0..9].shuffle.permutation(15).next.join
+      path = File.join(PATH, self.data[:filetype])
     end
-  end
 
-  def import_file
-    begin
-      if self.datahash.has_key? :date_taken
-        if self.datahash.has_key? :photosize
-          size = self.datahash[:photosize]
-        else
-          size = 'org'
-        end
-        dh = generate_datehash(self.datahash[:date_taken])
-        path = File.join(PATH, dh[:year].to_s, dh[:month].to_s, dh[:day].to_s)
-        #TODO change extension. Should come from mime
-        filename = "#{dh[:datestring]}_#{self.datahash[:photosize]}_#{dh[:unique]}.jpg"
-        self.size = size
-        self.filetype = 'date'
-      else
-        if self.datahash.has_key? :filetype
-          path = File.join(PATH, self.datahash[:filetype])
-          self.filetype = self.datahash[:filetype]
-        else
-          path = File.join(PATH, 'system')
-          self.filetype = 'system'
-        end
-        filename = [*'a'..'z', *'A'..'Z', *0..9].shuffle.permutation(15).next.join
-      end
+    FileUtils.mkdir_p File.join(path)
+    filepath = File.join(path, filename)
+    FileUtils.cp self.data[:path], filepath
 
-      FileUtils.mkdir_p File.join(path)
-      filepath = File.join(path, filename)
-      FileUtils.cp self.path, filepath
-      self.path = filepath
-    rescue Exception => e
-      raise e
-    end
-  end
-
-  def delete_file
-    FileUtils.rm self.path if File.exists? self.path
+    self.filetype = self.data[:filetype]
+    self.path = filepath
   end
 
   def get_phash
@@ -72,13 +43,13 @@ class Photofile < ActiveRecord::Base
       return false
     end
   end
+
+
   private
 
-  def generate_datehash(date)
-    date = date.to_date
+  def _datehash(date)
     datestring = date.strftime("%Y%m%d%H%M%S")
     unique = [*'a'..'z', *'A'..'Z', *0..9].shuffle.permutation(5).next.join
-
     datehash = {
       :datestring=>datestring,
       :unique=>unique,
@@ -86,8 +57,10 @@ class Photofile < ActiveRecord::Base
       :month=>date.month,
       :day=>date.day
     }
-
     return datehash
   end
 
+  def _delete
+    FileUtils.rm self.path if File.exists? self.path
+  end
 end

@@ -1,19 +1,17 @@
 class CatalogsController < ApplicationController
+  set_pagination_headers :photos, only: [:photos]
+
   def index
       @catalogs = Catalog.order(:id).page params[:page]
   end
 
-  # def new
-  #   @catalog = Catalog.new
-  #   @catalog_options = [
-  #     ['Local','LocalCatalog'],
-  #     ['Dropbox','DropboxCatalog'],
-  #     ['Flickr','FlickrCatalog']
-  #   ]
-  # end
+  def photos
+    @photos = Photo.paginate(:page => params[:page], :per_page=>60)
+    render 'photos/index'
+  end
 
   def create_c
-    name =params[:name]
+    name = params[:name]
     type = params[:type]
 
     case params[:type]
@@ -23,59 +21,71 @@ class CatalogsController < ApplicationController
       when 'LocalCatalog'
 
       when 'DropboxCatalog'
-        catalog = DropboxCatalog.new(name: params[:name])
+        catalog = DropboxCatalog.new(
+          name: params[:name],
+          sync_from_catalog: params[:sync_from_catalog],
+          user_id: @current_user.id
+        )
         catalog.redirect_uri = request.base_url
         catalog.save
-        auth_url = catalog.auth #Not necessary
+        catalog.auth
       when 'FlickrCatalog'
-
+        catalog = FlickrCatalog.new(
+          name: params[:name],
+          sync_from_catalog: params[:sync_from_catalog],
+          user_id: @current_user.id
+        )
+        catalog.redirect_uri = request.base_url
+        catalog.save
+        catalog.auth
     end
-    render :json => { catalog: catalog }
-
+    @catalog = catalog
+    render "catalogs/show" #:json => { catalog: catalog }
 
   end
 
-  def verify_dropbox
+  def oauth_verify
     id = params[:id]
-    verifier = params[:verifier]
-    catalog = DropboxCatalog.find(id)
-    catalog.update(verifier: verifier)
-    if catalog.callback
-      render :json => { catalog: DropboxCatalog.find(id) }
+    verifier = params[:oauth_verifier]
+    @catalog = Catalog.find(id)
+
+    @catalog.update(verifier: verifier)
+    if @catalog.callback
+      render "catalogs/show" #json: {:status=> 200, catalog: Catalog.find(id) }
     else
-      render :json => { error: 'nogo' }
+      render json: {:status=> 502}
     end
   end
 
-  def create
-    if ["DropboxCatalog", "FlickrCatalog"].include? params[:catalog][:type]
-      redirect_to "/catalogs/authorize?name=#{params[:catalog][:name]}&type=#{params[:catalog][:type]}"
-    else
-      @catalog = Catalog.new(catalog_params)
-      if @catalog.save
-        redirect_to action: 'edit', id:@catalog
-      end
-    end
-  end
+  # def create
+  #   if ["DropboxCatalog", "FlickrCatalog"].include? params[:catalog][:type]
+  #     redirect_to "/catalogs/authorize?name=#{params[:catalog][:name]}&type=#{params[:catalog][:type]}"
+  #   else
+  #     @catalog = Catalog.new(catalog_params)
+  #     if @catalog.save
+  #       redirect_to action: 'edit', id:@catalog
+  #     end
+  #   end
+  # end
 
-  def edit
-    @catalog = Catalog.find(params[:id])
-    @catalog_options = [
-      ['Master','MasterCatalog'],
-      ['Local','LocalCatalog'],
-      ['Dropbox','DropboxCatalog'],
-      ['Flickr','FlickrCatalog']
-    ]
-    if @catalog.sync_from_albums.blank?
-      @sync_from="catalog"
-    else
-      @sync_from="album"
-    end
-  end
+  # def edit
+  #   @catalog = Catalog.find(params[:id])
+  #   @catalog_options = [
+  #     ['Master','MasterCatalog'],
+  #     ['Local','LocalCatalog'],
+  #     ['Dropbox','DropboxCatalog'],
+  #     ['Flickr','FlickrCatalog']
+  #   ]
+  #   if @catalog.sync_from_albums.blank?
+  #     @sync_from="catalog"
+  #   else
+  #     @sync_from="album"
+  #   end
+  # end
 
   def update
     catalog = Catalog.find(params[:id])
-    puts params[:type]
+
     case params[:type]
       when "MasterCatalog"
         catalog_attribs = update_master
@@ -88,7 +98,7 @@ class CatalogsController < ApplicationController
     end
 
     if catalog.update(catalog_attribs)
-      render :json => { catalog: catalog }
+      render render "catalogs/show" #:json => { catalog: catalog }
     end
   end
 
@@ -99,13 +109,13 @@ class CatalogsController < ApplicationController
   end
 
   def show
-    @bucket = session[:bucket]
+    # @bucket = session[:bucket]
     @catalog = Catalog.find(params[:id])
-    @photos = @catalog.photos.where('photos.status != ? or photos.status is ?', 1, nil).page params[:page]
+    # @photos = @catalog.photos.where('photos.status != ? or photos.status is ?', 1, nil).page params[:page]
     #If this was requested from an ajax call it should be rendered with slim view
-    if request.xhr?
-      render :partial=>"photos/grid"
-    end
+    # if request.xhr?
+    #   render :partial=>"photos/grid"
+    # end
   end
 
   def dashboard

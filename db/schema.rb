@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 20170218133917) do
+ActiveRecord::Schema.define(version: 20170415181823) do
 
   create_table "albums", force: :cascade, options: "ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci" do |t|
     t.string   "name"
@@ -47,6 +47,7 @@ ActiveRecord::Schema.define(version: 20170218133917) do
     t.integer  "sync_from_catalog"
     t.string   "ext_store_data",    limit: 1024
     t.boolean  "import_mode"
+    t.integer  "user_id"
   end
 
   create_table "comments", force: :cascade, options: "ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci" do |t|
@@ -85,6 +86,8 @@ ActiveRecord::Schema.define(version: 20170218133917) do
     t.datetime "completed_at"
     t.string   "queue"
     t.integer  "status"
+    t.integer  "jobable_id"
+    t.string   "jobable_type"
   end
 
   create_table "locations", force: :cascade, options: "ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci" do |t|

@@ -63,6 +63,7 @@ GEM
     acts_as_commentable (4.0.2)
     acts_as_votable (0.10.0)
     arel (7.1.4)
+    awesome_print (1.7.0)
     bcrypt (3.1.11)
     builder (3.2.3)
     byebug (9.0.6)
@@ -196,6 +197,7 @@ DEPENDENCIES
   acts-as-taggable-on (~> 4.0)
   acts_as_commentable
   acts_as_votable (~> 0.10.0)
+  awesome_print
   bcrypt (~> 3.1.7)
   byebug
   dropbox-sdk
@@ -225,4 +227,4 @@ DEPENDENCIES
   will_paginate
 
 BUNDLED WITH
-   1.12.5
+   1.14.6

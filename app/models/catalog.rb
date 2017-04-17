@@ -1,11 +1,12 @@
 class Catalog < ActiveRecord::Base
-  # include ActiveModel::Serializers::JSON
+
   serialize :watch_path, Array
   serialize :sync_from_albums, Array
 
-
   has_many :instances
   has_many :photos, through: :instances
+  has_many :jobs, as: :jobable
+  belongs_to  :user
 
   scope :photos, -> { Photo.joins(:instances).where('catalog_id=?', self.id) }
 

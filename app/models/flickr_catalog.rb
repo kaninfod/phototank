@@ -4,11 +4,13 @@ class FlickrCatalog < Catalog
   serialize :ext_store_data, Hash
 
   def auth()
-    self.appkey = Rails.configuration.x.flickr["appkey"]
-    self.appsecret = Rails.configuration.x.flickr["appsecret"]
-    base_url = self.redirect_uri
-    url_ext = "/catalogs/authorize_callback"
-    params = "?type=FlickrCatalog&id=#{self.id}"
+    self.appkey = Rails.configuration.flickr["appkey"]
+    self.appsecret = Rails.configuration.flickr["appsecret"]
+    # self.appkey = Rails.configuration.x.flickr["appkey"]
+    # self.appsecret = Rails.configuration.x.flickr["appsecret"]
+    base_url = Rails.configuration.phototank["api_base_url"]
+    url_ext = "/catalogs/oauth_verify"
+    params = "?id=#{self.id}&token=#{self.user.password_digest}"
     self.redirect_uri = "#{base_url}#{url_ext}#{params}"
     FlickRaw.api_key=self.appkey
     FlickRaw.shared_secret = self.appsecret
@@ -18,27 +20,25 @@ class FlickrCatalog < Catalog
     # You'll need to store the token somewhere for when the user is returned to the callback method
     # I stick mine in memcache with their session key as the cache key
     self.request_token = token
+    self.auth_url = flickr.get_authorize_url(token['oauth_token'], :perms => 'delete')
     self.save
-
-    @auth_url = flickr.get_authorize_url(token['oauth_token'], :perms => 'delete')
     # Stick @auth_url in your template for users to click
   end
 
   # Your users browser will be redirected here from Flickr (see @callback_url above)
   def callback
     begin
-
       flickr = FlickRaw::Flickr.new
 
       request_token = self.request_token
-      oauth_token = request_token[:oauth_token]
+      access_token = request_token[:oauth_token]
       oauth_verifier = self.verifier
 
       raw_token = flickr.get_access_token(request_token['oauth_token'], request_token['oauth_token_secret'], oauth_verifier)
       # raw_token is a hash like this {"user_nsid"=>"92023420%40N00", "oauth_token_secret"=>"XXXXXX", "username"=>"boncey", "fullname"=>"Darren%20Greaves", "oauth_token"=>"XXXXXX"}
       # Use URI.unescape on the nsid and name parameters
 
-      self.oauth_token = raw_token["oauth_token"]
+      self.access_token = raw_token["oauth_token"]
       self.oauth_token_secret = raw_token["oauth_token_secret"]
       self.save
       return 1
@@ -57,20 +57,20 @@ class FlickrCatalog < Catalog
 
   def import_photo(photo_id)
 
-    pf = PhotoFilesApi::Api::new
+    # pf = PhotoFilesApi::Api::new
 
     photo = Photo.find(photo_id)
     instance = photo.instances.where(catalog_id: self.id).first
-    photofile = pf.show(photo.org_id)
+    photofile = Photofile.find(photo.org_id) #pf.show(photo.org_id)
 
     if instance.status != 1
-      file = Tempfile.new("Flickr_")
+      #file = Tempfile.new("Flickr_")
       begin
-        file.binmode
-        file.write open(photofile[:url]).read
-        src = file.path
+        #file.binmode
+        #file.write open(photofile[:url]).read
+        src = photofile.path
 
-        response = self.client.upload_photo src, :title=> photofile[:url], :tags=>get_flickr_tags(photo_id)
+        response = self.client.upload_photo src, :title=> photofile.path, :tags=>get_flickr_tags(photo_id)
 
         #self.set_tags response, photo.id
         instance.touch
@@ -78,8 +78,8 @@ class FlickrCatalog < Catalog
       rescue Exception => e
         raise e
       ensure
-        file.close
-        file.unlink
+        #file.close
+        #file.unlink
       end
     end
   end
@@ -100,7 +100,7 @@ class FlickrCatalog < Catalog
   end
 
   def online
-    true if oauth_token
+    true if access_token
   end
 
   def delete_contents
@@ -121,6 +121,14 @@ class FlickrCatalog < Catalog
     rescue Exception => e
       logger.debug "#{e}"
     end
+  end
+
+  def auth_url=(new_auth_url)
+    self.ext_store_data = self.ext_store_data.merge({:auth_url => new_auth_url})
+  end
+
+  def auth_url
+    self.ext_store_data[:auth_url]
   end
 
   def appkey=(new_appkey)
@@ -163,12 +171,12 @@ class FlickrCatalog < Catalog
     self.ext_store_data[:request_token]
   end
 
-  def oauth_token=(new_oauth_token)
-    self.ext_store_data = self.ext_store_data.merge({:oauth_token => new_oauth_token})
+  def access_token=(new_access_token)
+    self.ext_store_data = self.ext_store_data.merge({:access_token => new_access_token})
   end
 
-  def oauth_token
-    self.ext_store_data[:oauth_token]
+  def access_token
+    self.ext_store_data[:access_token]
   end
 
   def oauth_token_secret=(new_oauth_token_secret)
@@ -179,11 +187,12 @@ class FlickrCatalog < Catalog
     self.ext_store_data[:oauth_token_secret]
   end
 
-  def user_id
-    Rails.cache.fetch("flickr/user_id/#{self.id}", expires_in: 10.days) do
-      response = self.client.test.login
-      response["id"]
-    end
+  def flickr_user_id
+    self.ext_store_data[:user_id]
+    # Rails.cache.fetch("flickr/user_id/#{self.id}", expires_in: 10.days) do
+    #   response = self.client.test.login
+    #   response["id"]
+    # end
   end
 
 
@@ -193,7 +202,7 @@ class FlickrCatalog < Catalog
       FlickRaw.api_key= self.appkey
       FlickRaw.shared_secret= self.appsecret
 
-      flickr.access_token = self.oauth_token
+      flickr.access_token = self.access_token
       flickr.access_secret = self.oauth_token_secret
       @client = flickr
     end
@@ -203,7 +212,8 @@ class FlickrCatalog < Catalog
   private
 
   def get_flickr_tags(photo_id)
-    instance_name = Rails.configuration.x.phototank["instance_name"]
+
+    instance_name = Rails.configuration.phototank["instance_name"]
     "photo_id:#{photo_id} catalog_id:#{self.id} PHOTOTANK #{instance_name}"
   end
 

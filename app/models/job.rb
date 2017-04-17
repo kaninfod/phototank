@@ -1,5 +1,6 @@
 class Job < ActiveRecord::Base
   serialize :arguments, Array
+  belongs_to :jobable, polymorphic: true
 
   scope :distinct_job_types, -> {
     ary = select(:job_type).distinct.map { |c| [c.job_type] }.unshift([''])

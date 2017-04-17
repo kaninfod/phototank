@@ -31,14 +31,16 @@ Rails.application.routes.draw do
 
 
   post '/catalogs/create_c'  => 'catalogs#create_c'
-  post '/catalogs/verify_dropbox'  => 'catalogs#verify_dropbox'
+  get '/catalogs/oauth_verify'  => 'catalogs#oauth_verify'
   get  '/catalogs/:id/import' => 'catalogs#import'
+  get  '/catalogs/:id/photos' => 'catalogs#photos'
+  resources :catalogs
 
   get '/catalogs/migrate' => 'catalogs#migrate'
   get '/catalogs/authorize' => 'catalogs#authorize'
   put '/catalogs/authorize' => 'catalogs#authorize'
   get '/catalogs/authorize_callback' => 'catalogs#authorize_callback'
-  resources :catalogs
+
   get '/catalogs/:id/dashboard' => 'catalogs#dashboard'
   get '/catalogs/:id/get_catalog' => 'catalogs#get_catalog'
   match "/catalogs/:id/edit" => "catalogs#edit", via: [:get, :post]

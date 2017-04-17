@@ -17,13 +17,14 @@ class DropboxCatalog < Catalog
   def callback
     begin
       flow = DropboxOAuth2FlowNoRedirect.new(self.appkey, self.appsecret)
-      puts flow
-      access_token, user_id = flow.finish(self.verifier)
-      puts access_token
+      access_token, dropbox_user_id = flow.finish(self.verifier)
+
       self.access_token = access_token
-      self.user_id = user_id
+      self.dropbox_user_id = dropbox_user_id
+
       self.save
-      return 1
+      return true unless self.access_token.blank?
+      return false
     rescue Exception => e
       return 0
     end
@@ -143,12 +144,12 @@ class DropboxCatalog < Catalog
     self.ext_store_data[:access_token]
   end
 
-  def user_id=(new_user_id)
-    self.ext_store_data = self.ext_store_data.merge({:user_id => new_user_id})
+  def dropbox_user_id=(new_user_id)
+    self.ext_store_data = self.ext_store_data.merge({:dropbox_user_id => new_user_id})
   end
 
-  def user_id
-    self.ext_store_data[:user_id]
+  def dropbox_user_id
+    self.ext_store_data[:dropbox_user_id]
   end
 
   def client

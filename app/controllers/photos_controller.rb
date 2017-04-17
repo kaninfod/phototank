@@ -1,7 +1,7 @@
 
 class PhotosController < ApplicationController
   include BucketActions
-   set_pagination_headers :photos, only: [:index]
+  set_pagination_headers :photos, only: [:index]
 
   def image
     @photo = set_photo
@@ -56,7 +56,6 @@ class PhotosController < ApplicationController
         album_hash[:tags] = tags
       end
     end
-
     @album = Album.new(album_hash)
     #Get photos
     @photos = @album.photos.where('photos.status != ? or photos.status is ?', 1, nil).order(date_taken: order).paginate(:page => params[:page], :per_page=>60)

@@ -22,14 +22,13 @@ class MasterCatalog < Catalog
   end
 
   def delete_photo(photo_id)
-    pf = PhotoFilesApi::Api::new
     begin
       photo = self.photos.find(photo_id)
 
-      pf.destroy photo.tm_id
-      pf.destroy photo.md_id
-      pf.destroy photo.lg_id
-      pf.destroy photo.org_id
+      Photofile.find(photo.tm_id).destroy
+      Photofile.find(photo.md_id).destroy
+      Photofile.find(photo.lg_id).destroy
+      Photofile.find(photo.org_id).destroy
 
     rescue Exception => e
       Rails.logger.debug "Error: #{e}"
@@ -46,6 +45,7 @@ class MasterCatalog < Catalog
       c.watch_path = []
       c.save
       Rails.cache.delete("master_catalog")
+      return c.id
     end
   end
 

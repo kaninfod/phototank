@@ -31,7 +31,7 @@ module Phototank
     config.active_job.queue_adapter = :resque
     config.flickr = config_for(:app_flickr)
     config.dropbox = config_for(:app_dropbox)
-    config.x.phototank = config_for(:app_phototank)
+    config.phototank = config_for(:app_phototank)
 
     module ApiApp
       class Application < Rails::Application
