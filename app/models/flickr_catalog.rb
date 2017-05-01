@@ -9,8 +9,8 @@ class FlickrCatalog < Catalog
     # self.appkey = Rails.configuration.x.flickr["appkey"]
     # self.appsecret = Rails.configuration.x.flickr["appsecret"]
     base_url = Rails.configuration.phototank["api_base_url"]
-    url_ext = "/catalogs/oauth_verify"
-    params = "?id=#{self.id}&token=#{self.user.password_digest}"
+    url_ext = "/catalogs/oauth_verify.json"
+    params = "?id=#{self.id}&token=#{self.user.remember_token}"
     self.redirect_uri = "#{base_url}#{url_ext}#{params}"
     FlickRaw.api_key=self.appkey
     FlickRaw.shared_secret = self.appsecret

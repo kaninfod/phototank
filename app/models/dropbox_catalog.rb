@@ -39,23 +39,29 @@ class DropboxCatalog < Catalog
 
   def import_photo(photo_id)
 
-    pf = PhotoFilesApi::Api::new
+    # pf = PhotoFilesApi::Api::new
 
     photo = Photo.find(photo_id)
     instance = photo.instances.where(catalog_id: self.id).first
-    photofile = pf.show(photo.org_id)
-    dropbox_path = File.join(self.path, photofile[:path][0], photofile[:path][1], photofile[:path][2])
-    dropbox_file = File.join(dropbox_path, "#{photofile[:path][3]}.jpg")
+    photofile = Photofile.find(photo.org_id)
+    photofile_split = photofile.path.split(File::SEPARATOR)
 
+
+    dropbox_path = File.join(self.name, photofile_split[-4], photofile_split[-3], photofile_split[-2])
+    dropbox_file = File.join(dropbox_path, photofile_split[-1]  )
+    # dropbox_path = File.join(self.path, photofile[:path][0], photofile[:path][1], photofile[:path][2])
+    # dropbox_file = File.join(dropbox_path, "#{photofile[:path][3]}.jpg")
+
+    
     if not instance.status #self.exists(dropbox_path)
-      file = Tempfile.new("flickr.jpg")
+      # file = Tempfile.new("flickr.jpg")
       begin
-        file.binmode
-        file.write open(photofile[:url]).read
-        src = file.path
+        # file.binmode
+        # file.write open(photofile[:url]).read
+        src = photofile.path
 
-        response = self.create_folder(dropbox_path)
-        response = self.add_file(file.path, dropbox_file)
+        # response = self.create_folder(dropbox_path)
+        response = self.add_file(src, dropbox_file)
 
         instance.touch
         instance.update(

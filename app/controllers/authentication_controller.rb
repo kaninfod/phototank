@@ -6,7 +6,7 @@ class AuthenticationController < ApplicationController
 
     if command.success?
       user = User.find_by_email(params[:email])
-      user.update(password_digest: command.result)  
+      user.update(remember_token: command.result)
       render json: { auth_token: command.result, user: user }
     else
       render json: { error: command.errors }, status: :unauthorized
