@@ -1,0 +1,26 @@
+<div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+  <div class="d-flex align-items-center gap-2 text-truncate">
+    <div class="navbar-text text-light small text-truncate">{{ photo.datetime_original or "" }}</div>
+    <button type="button" class="badge rounded-pill rating-badge {% if (photo.rating or 0) == 0 %}bg-secondary text-light{% else %}bg-warning text-dark{% endif %}" data-guid="{{ photo.guid }}" data-rating="{{ photo.rating or 0 }}">{{ photo.rating or 0 }}</button>
+    <div class="form-check mb-0">
+      <input class="form-check-input select-detail" type="checkbox" data-guid="{{ photo.guid }}" id="selectDetail">
+      <label class="form-check-label text-light" for="selectDetail">Select</label>
+    </div>
+  </div>
+
+  <div class="btn-group" role="group" aria-label="Photo navigation">
+    {% if prev_url %}
+      <a class="btn btn-outline-light btn-sm" id="btnPrev" href="{{ prev_url }}" hx-get="{{ prev_url }}" hx-target="#photoPanel" hx-swap="outerHTML" hx-push-url="true">Previous</a>
+    {% else %}
+      <button class="btn btn-outline-light btn-sm" type="button" disabled>Previous</button>
+    {% endif %}
+
+    <a class="btn btn-outline-light btn-sm" id="btnGrid" href="{{ back_url }}">Photo Grid</a>
+
+    {% if next_url %}
+      <a class="btn btn-outline-light btn-sm" id="btnNext" href="{{ next_url }}" hx-get="{{ next_url }}" hx-target="#photoPanel" hx-swap="outerHTML" hx-push-url="true">Next</a>
+    {% else %}
+      <button class="btn btn-outline-light btn-sm" type="button" disabled>Next</button>
+    {% endif %}
+  </div>
+</div>

@@ -1,0 +1,30 @@
+<div class="d-flex align-items-center gap-2 flex-wrap">
+  <form class="d-flex align-items-center gap-2 flex-wrap" method="get" action="/phototank/">
+    <div class="d-flex align-items-center gap-1">
+      <label class="text-light small mb-0" for="jump">Jump</label>
+      <input class="form-control form-control-sm" type="date" id="jump" name="jump" value="{{ jump_date }}">
+    </div>
+
+    <div class="d-flex align-items-center gap-1">
+      <label class="text-light small mb-0" for="limit">Per</label>
+      <input class="form-control form-control-sm" type="number" id="limit" name="limit" min="1" max="200" value="{{ limit }}" style="width: 6.5rem;">
+    </div>
+
+    <div class="d-flex align-items-center gap-1">
+      <label class="text-light small mb-0" for="rating">Rating</label>
+      <select class="form-select form-select-sm" id="rating" name="rating" style="width: 5.5rem;">
+        <option value="" {% if rating is none %}selected{% endif %}>All</option>
+        <option value="0" {% if rating == 0 %}selected{% endif %}>0</option>
+        <option value="1" {% if rating == 1 %}selected{% endif %}>1</option>
+        <option value="2" {% if rating == 2 %}selected{% endif %}>2</option>
+        <option value="3" {% if rating == 3 %}selected{% endif %}>3</option>
+      </select>
+    </div>
+
+    <button class="btn btn-primary btn-sm" type="submit">Go</button>
+  </form>
+
+  <button class="btn btn-outline-light btn-sm" type="button" id="selectedToggle" data-bs-toggle="offcanvas" data-bs-target="#selectedOffcanvas" aria-controls="selectedOffcanvas">
+    Selected (<span id="navSelectedCount">0</span>)
+  </button>
+</div>

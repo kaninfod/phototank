@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block nav_main %}
+  {% include "partials/photo_nav_main.html" %}
+{% endblock %}
+
+{% block content %}
+  {% include "partials/photo_panel.html" %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ request.url_for('static', path='js/rating.js') }}"></script>
+  <script src="{{ request.url_for('static', path='js/selection_detail.js') }}"></script>
+  <script src="{{ request.url_for('static', path='js/shortcuts.js') }}"></script>
+{% endblock %}

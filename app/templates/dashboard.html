@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="container-fluid py-3 overflow-auto" style="max-height: calc(100vh - 140px);">
+                            href="/phototank/?jump={{ y }}-01-01"
+
+    <div class="row g-3">
+      <div class="col-12 col-lg-6">
+        <div class="card">
+          <div class="card-header">Stats</div>
+          <div class="card-body">
+            <div class="mb-2">
+              <div class="text-muted small">Total photos</div>
+              <div class="fs-4">{{ total_photos }}</div>
+            </div>
+
+            <div class="mt-3">
+              <div class="text-muted small mb-2">Photos per year</div>
+              {% if photos_per_year and photos_per_year|length > 0 %}
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Year</th>
+                        <th class="text-end">Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for y, c in photos_per_year %}
+                        <tr>
+                          <td>
+                            <span class="me-1">{{ y }}</span>
+                            <a
+                              class="link-secondary text-decoration-none"
+                              href="/phototank/?jump={{ y }}-01-01"
+                              aria-label="Open gallery for {{ y }}"
+                              title="Open gallery for {{ y }}"
+                            >&#8599;</a>
+                          </td>
+                          <td class="text-end">{{ c }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <div class="text-muted">No year stats yet.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-6">
+        <div class="card">
+          <div class="card-header">Import</div>
+          <div class="card-body">
+            <button
+              class="btn btn-primary"
+              hx-post="/phototank/dashboard/import/start"
+              hx-target="#importStatus"
+              hx-swap="innerHTML"
+            >Start import</button>
+
+            <div id="importStatus" class="mt-3"></div>
+          </div>
+        </div>
+
+        <div class="card mt-3">
+          <div class="card-header">Scan</div>
+          <div class="card-body">
+            <form
+              class="row g-2 align-items-end"
+              hx-post="/phototank/dashboard/scan/start"
+              hx-target="#scanStatus"
+              hx-swap="innerHTML"
+            >
+              <div class="col-auto">
+                <label class="form-label" for="scanYear">Year (optional)</label>
+                <input class="form-control" id="scanYear" name="year" inputmode="numeric" placeholder="e.g. 2019" />
+              </div>
+              <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Start scan</button>
+              </div>
+            </form>
+
+            <div id="scanStatus" class="mt-3"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

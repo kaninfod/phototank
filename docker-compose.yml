@@ -1,0 +1,33 @@
+services:
+  phototank:
+    # For Portainer stacks you can either use `build: .` (build in-place)
+    # or set `image:` to a registry image (e.g. GHCR) and remove `build:`.
+    build: .
+    image: phototank:local
+    ports:
+      - "8000:8000"
+    environment:
+      # Required
+      PHOTO_ROOT: /photos
+
+      # Optional (these mirror the defaults in app/config.py)
+      DB_PATH: data/phototank.sqlite
+      DERIV_ROOT: data/derivatives
+      IMPORT_ROOT: import
+      FAILED_ROOT: failed
+
+      # Logging
+      LOG_LEVEL: INFO
+      LOG_FILE: data/phototank.log
+
+      # Examples:
+      # PHOTO_EXTS: .jpg,.jpeg,.png,.heic,.webp
+      # DATETIME_FALLBACK: json,mtime
+
+    volumes:
+      # Update these host paths for your environment.
+      - /path/to/your/photos:/photos
+      - ./data:/phototank/data
+      - ./import:/phototank/import
+      - ./failed:/phototank/failed
+    restart: unless-stopped

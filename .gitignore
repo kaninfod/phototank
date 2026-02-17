@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+env/
+.venv/
+venv/
+
+# Local config / secrets
+.env
+
+# Local runtime data / outputs
+data/
+import/
+failed/
+
+# OS / editor
+.DS_Store
+.vscode/
+
+# Notebooks
+.ipynb_checkpoints/

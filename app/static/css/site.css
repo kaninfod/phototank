@@ -1,0 +1,44 @@
+.thumb-img {
+	width: 100%;
+	aspect-ratio: 1 / 1;
+	object-fit: contain;
+	background-color: var(--bs-dark);
+	display: block;
+}
+
+.thumb-check {
+	z-index: 2;
+}
+
+.rating-badge {
+	z-index: 3 !important;
+	cursor: pointer;
+	border: 0;
+	pointer-events: auto;
+}
+
+.photo-tile.kb-active {
+	outline: 2px solid var(--bs-primary);
+	outline-offset: -2px;
+}
+
+/* Bootstrap's .stretched-link uses a full-size ::after overlay; keep it under interactive controls. */
+.position-relative .stretched-link::after {
+	z-index: 1;
+}
+
+.mini-thumb {
+	width: 64px;
+	height: 64px;
+	object-fit: contain;
+	background-color: var(--bs-dark);
+	display: block;
+}
+
+.detail-img {
+	width: 100%;
+	max-height: 80vh;
+	object-fit: contain;
+	background-color: var(--bs-dark);
+	display: block;
+}

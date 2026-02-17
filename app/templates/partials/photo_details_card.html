@@ -1,0 +1,27 @@
+<div class="card">
+  <div class="card-header">Details</div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-4">GUID</dt>
+      <dd class="col-8"><code>{{ photo.guid }}</code></dd>
+
+      <dt class="col-4">Path</dt>
+      <dd class="col-8"><span class="text-muted">{{ photo.rel_path }}</span></dd>
+
+      <dt class="col-4">Rating</dt>
+      <dd class="col-8">{{ photo.rating or 0 }}</dd>
+
+      <dt class="col-4">Size</dt>
+      <dd class="col-8">{{ photo.width }}×{{ photo.height }} ({{ photo.file_size }} bytes)</dd>
+
+      <dt class="col-4">Location</dt>
+      <dd class="col-8">
+        {% if photo.gps_latitude is not none and photo.gps_longitude is not none %}
+          {{ photo.gps_latitude }}, {{ photo.gps_longitude }}
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </dd>
+    </dl>
+  </div>
+</div>

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block nav_extra %}
+  {% include "partials/gallery_nav_extra.html" %}
+{% endblock %}
+
+{% block topbar %}
+  {# moved into navbar #}
+{% endblock %}
+
+{% block content %}
+  <div class="container-fluid h-100 py-2">
+    {% include "partials/gallery_grid.html" %}
+  </div>
+  {% include "partials/gallery_offcanvas.html" %}
+{% endblock %}
+
+{% block footer %}
+  {% include "partials/gallery_footer.html" %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ request.url_for('static', path='js/gallery.js') }}"></script>
+  <script src="{{ request.url_for('static', path='js/rating.js') }}"></script>
+  <script src="{{ request.url_for('static', path='js/shortcuts.js') }}"></script>
+{% endblock %}

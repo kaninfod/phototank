@@ -1,0 +1,24 @@
+# Virtualenvs
+env/
+.venv/
+venv/
+
+# Local data / generated outputs
+data/
+import/
+failed/
+
+# Local env files
+.env
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# OS / editor
+.DS_Store
+.vscode/
+
+# Notebooks
+.ipynb_checkpoints/

@@ -1,0 +1,13 @@
+<div class="offcanvas offcanvas-end" tabindex="-1" id="selectedOffcanvas" aria-labelledby="selectedOffcanvasLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="selectedOffcanvasLabel">Selected (<span id="offcanvasCount">0</span>)</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body d-flex flex-column gap-2">
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-secondary btn-sm" type="button" id="offcanvasClear">Clear</button>
+      <button class="btn btn-danger btn-sm" type="button" id="offcanvasDelete">Delete</button>
+    </div>
+    <div id="selectedGrid" class="d-grid" style="grid-template-columns: repeat(4, 1fr); gap: .5rem; overflow:auto;"></div>
+  </div>
+</div>

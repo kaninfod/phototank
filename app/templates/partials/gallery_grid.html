@@ -1,0 +1,26 @@
+{% if not items %}
+  <div class="alert alert-secondary">No photos found for this range.</div>
+{% else %}
+  {% set current = request.url.path ~ (('?' ~ request.url.query) if request.url.query else '') %}
+  <div class="h-100 overflow-auto pt-1">
+    <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 g-2">
+      {% for it in items %}
+        <div class="col">
+          <div class="card h-100 photo-tile" data-guid="{{ it.guid }}">
+            <div class="position-relative">
+              <img class="thumb-img" loading="lazy" src="{{ it.thumb_url }}" alt="{{ it.guid }}">
+              <button type="button" class="badge rounded-pill rating-badge position-absolute top-0 end-0 m-2 {% if (it.rating or 0) == 0 %}bg-secondary text-light{% else %}bg-warning text-dark{% endif %}" data-guid="{{ it.guid }}" data-rating="{{ it.rating or 0 }}">{{ it.rating or 0 }}</button>
+              <div class="form-check position-absolute top-0 start-0 m-2 thumb-check">
+                <input class="form-check-input select-photo" type="checkbox" data-guid="{{ it.guid }}" aria-label="Select photo">
+              </div>
+              <a href="/phototank/photo/{{ it.guid }}?jump={{ jump_date }}{% if rating is not none %}&rating={{ rating }}{% endif %}&from={{ current|urlencode }}" class="stretched-link" aria-label="Open photo"></a>
+            </div>
+            <div class="card-body p-2">
+              <div class="small text-muted text-truncate">{{ it.date }}</div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
