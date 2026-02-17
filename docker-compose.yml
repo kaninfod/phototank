@@ -5,7 +5,9 @@ services:
     build: .
     image: phototank:local
     ports:
-      - "8000:8000"
+      # Change the left side (host port) to whatever you want.
+      # You can also set PHOTOTANK_PORT in Portainer stack env.
+      - "${PHOTOTANK_PORT:-8000}:8000"
     environment:
       # Required
       PHOTO_ROOT: /photos
