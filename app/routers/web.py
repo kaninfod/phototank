@@ -7,13 +7,12 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import ValidationError
 from sqlalchemy import and_, func, or_, select
 
-from ..config import get_settings
-from ..db import create_job, engine_for, fetch_photo, get_job, init_db, sessionmaker_for
-from ..jobs import new_job_id, run_import_job, run_scan_job
-from ..models import Photo, ScanJob
+from ..db import create_job, fetch_photo, get_job, list_tags, sessionmaker_for, tags_for_photo
+from ..jobs import new_job_id, run_ingest_job, run_validate_job
+from ..models import Photo, PhotoTag, ScanJob
+from ..router_helpers import ensure_deriv_root, ensure_dirs_and_db, ensure_import_dirs, settings_or_500
 from ..util import b64decode_cursor, b64encode_cursor, normalize_guid
 
 web_router = APIRouter()
@@ -22,37 +21,24 @@ _templates_dir = Path(__file__).resolve().parents[1] / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
 
 
-def _settings_or_500():
-    try:
-        return get_settings()
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Invalid or missing configuration. Create phototank/.env (see app/.env.example) "
-                "and set PHOTO_ROOT. "
-                f"Details: {e.errors()}"
-            ),
-        )
+def _dt_min(value) -> str:
+    """Format a datetime-ish value as 'YYYY-MM-DD HH:MM'.
+
+    Accepts datetime objects or strings like '2025-10-23T15:11:52' / '2025-10-23 15:11:52'.
+    Returns empty string for None.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.replace(microsecond=0).strftime("%Y-%m-%d %H:%M")
+
+    s = str(value)
+    if "T" in s:
+        s = s.replace("T", " ")
+    return s[:16]
 
 
-def _ensure_dirs_and_db(photo_root: Path, db_path: Path) -> None:
-    if not photo_root.exists() or not photo_root.is_dir():
-        raise HTTPException(status_code=400, detail=f"PHOTO_ROOT is not a directory: {photo_root}")
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-
-def _ensure_deriv_root(deriv_root: Path) -> None:
-    deriv_root.mkdir(parents=True, exist_ok=True)
-
-
-def _ensure_import_dirs(import_root: Path, failed_root: Path) -> None:
-    import_root.mkdir(parents=True, exist_ok=True)
-    failed_root.mkdir(parents=True, exist_ok=True)
-    if not import_root.is_dir():
-        raise HTTPException(status_code=400, detail=f"IMPORT_ROOT is not a directory: {import_root}")
-    if not failed_root.is_dir():
-        raise HTTPException(status_code=400, detail=f"FAILED_ROOT is not a directory: {failed_root}")
+templates.env.filters["dt_min"] = _dt_min
 
 
 def _load_job_or_404(*, session, job_id: str) -> ScanJob:
@@ -122,8 +108,9 @@ def _extract_filter_context(
     jump: str | None,
     start: str | None,
     rating: str | None,
-) -> tuple[str, int | None]:
-    """Return (jump_date_for_url, rating_int).
+    tag: str | None,
+) -> tuple[str, int | None, int | None]:
+    """Return (jump_date_for_url, rating_int, tag_id).
 
     Preference order:
     1) explicit query params on the detail URL (jump preferred over start)
@@ -132,8 +119,9 @@ def _extract_filter_context(
     """
     jump_raw = jump or start
     rating_raw = rating
+    tag_raw: str | None = tag
 
-    if (jump_raw is None or jump_raw == "") or (rating_raw is None):
+    if (jump_raw is None or jump_raw == "") or (rating_raw is None) or (tag_raw is None):
         if from_:
             try:
                 parsed = urlparse(from_)
@@ -145,12 +133,22 @@ def _extract_filter_context(
                         jump_raw = qs["start"][0]
                 if rating_raw is None and "rating" in qs and qs["rating"]:
                     rating_raw = qs["rating"][0]
+                if tag_raw is None and "tag" in qs and qs["tag"]:
+                    tag_raw = qs["tag"][0]
             except Exception:
                 pass
 
     _, jump_date_for_url = _parse_jump_to_end_iso(jump_raw)
     rating_int = _parse_rating_int(rating_raw)
-    return jump_date_for_url, rating_int
+
+    tag_id: int | None = None
+    if tag_raw is not None and tag_raw != "":
+        try:
+            tag_id = int(tag_raw)
+        except Exception:
+            tag_id = None
+
+    return jump_date_for_url, rating_int, tag_id
 
 
 @web_router.get("/", response_class=HTMLResponse)
@@ -161,12 +159,11 @@ def gallery(
     limit: int = Query(60, ge=1, le=200),
     older: str | None = Query(None, description="Keyset cursor for older page"),
     newer: str | None = Query(None, description="Keyset cursor for newer page"),
-    rating: str | None = Query(None, description="Filter photos by rating (0..3)")
+    rating: str | None = Query(None, description="Filter photos by rating (0..3)"),
+    tag: str | None = Query(None, description="Filter photos by tag id"),
 ):
-    settings = _settings_or_500()
+    settings = settings_or_500()
 
-    engine = engine_for(settings.db_path)
-    init_db(engine)
     SessionLocal = sessionmaker_for(settings.db_path)
 
     raw_jump = jump or start
@@ -193,10 +190,21 @@ def gallery(
         if rating_int < 0 or rating_int > 3:
             raise HTTPException(status_code=400, detail="rating must be 0..3")
 
+    tag_id: int | None = None
+    if tag is not None and tag != "":
+        try:
+            tag_id = int(tag)
+        except Exception:
+            raise HTTPException(status_code=400, detail="tag must be an integer")
+
     with SessionLocal() as session:
+        all_tags = list_tags(session)
+
         base = select(Photo).where(Photo.datetime_original.is_not(None))
         if rating_int is not None:
             base = base.where(Photo.rating == rating_int)
+        if tag_id is not None:
+            base = base.join(PhotoTag, PhotoTag.photo_guid == Photo.guid).where(PhotoTag.tag_id == tag_id)
 
         rows: list[Photo]
         if direction == "initial":
@@ -294,6 +302,8 @@ def gallery(
             "jump_date": jump_date_value,
             "limit": limit,
             "rating": rating_int,
+            "tag_id": tag_id,
+            "tags": all_tags,
             "has_newer": has_newer,
             "has_older": has_older,
             "newer_cursor": newer_cursor,
@@ -304,11 +314,9 @@ def gallery(
 
 @web_router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
-    settings = _settings_or_500()
-    _ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
 
-    engine = engine_for(settings.db_path)
-    init_db(engine)
     SessionLocal = sessionmaker_for(settings.db_path)
 
     with SessionLocal() as session:
@@ -341,25 +349,31 @@ def dashboard(request: Request):
 
 
 @web_router.post("/dashboard/import/start", response_class=HTMLResponse)
-def dashboard_import_start(request: Request, background_tasks: BackgroundTasks):
-    settings = _settings_or_500()
-    _ensure_dirs_and_db(settings.photo_root, settings.db_path)
-    _ensure_deriv_root(settings.deriv_root)
-    _ensure_import_dirs(settings.import_root, settings.failed_root)
+def dashboard_import_start(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    ingest_mode: str | None = Form(None),
+):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    ensure_deriv_root(settings.deriv_root)
+    ensure_import_dirs(settings.import_root, settings.failed_root)
 
-    engine = engine_for(settings.db_path)
-    init_db(engine)
     SessionLocal = sessionmaker_for(settings.db_path)
+
+    mode = (ingest_mode or "move").strip().lower()
+    if mode not in {"move", "copy"}:
+        raise HTTPException(status_code=400, detail="ingest_mode must be 'move' or 'copy'")
 
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
             create_job(session, job_id=job_id, year=None)
         job = _load_job_or_404(session=session, job_id=job_id)
-        job.message = "import"
+        job.message = f"ingest:{mode}"
         session.commit()
 
-    background_tasks.add_task(run_import_job, job_id)
+    background_tasks.add_task(run_ingest_job, job_id, ingest_mode=mode)
 
     with SessionLocal() as session:
         job = _load_job_or_404(session=session, job_id=job_id)
@@ -376,11 +390,9 @@ def dashboard_import_start(request: Request, background_tasks: BackgroundTasks):
 
 @web_router.get("/dashboard/import/status/{job_id}", response_class=HTMLResponse)
 def dashboard_import_status(request: Request, job_id: str):
-    settings = _settings_or_500()
-    _ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
 
-    engine = engine_for(settings.db_path)
-    init_db(engine)
     SessionLocal = sessionmaker_for(settings.db_path)
 
     with SessionLocal() as session:
@@ -396,15 +408,15 @@ def dashboard_import_status(request: Request, job_id: str):
     )
 
 
-@web_router.post("/dashboard/scan/start", response_class=HTMLResponse)
-def dashboard_scan_start(
+@web_router.post("/dashboard/validate/start", response_class=HTMLResponse)
+def dashboard_validate_start(
     request: Request,
     background_tasks: BackgroundTasks,
     year: str | None = Form(None),
 ):
-    settings = _settings_or_500()
-    _ensure_dirs_and_db(settings.photo_root, settings.db_path)
-    _ensure_deriv_root(settings.deriv_root)
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    ensure_deriv_root(settings.deriv_root)
 
     year_int: int | None = None
     if year is not None:
@@ -418,16 +430,17 @@ def dashboard_scan_start(
     if year_int is not None and (year_int < 1900 or year_int > 2100):
         raise HTTPException(status_code=400, detail="year must be between 1900 and 2100")
 
-    engine = engine_for(settings.db_path)
-    init_db(engine)
     SessionLocal = sessionmaker_for(settings.db_path)
 
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
             create_job(session, job_id=job_id, year=year_int)
+        job = _load_job_or_404(session=session, job_id=job_id)
+        job.message = "validate"
+        session.commit()
 
-    background_tasks.add_task(run_scan_job, job_id)
+    background_tasks.add_task(run_validate_job, job_id)
 
     with SessionLocal() as session:
         job = _load_job_or_404(session=session, job_id=job_id)
@@ -436,19 +449,17 @@ def dashboard_scan_start(
         "partials/dashboard_job_status.html",
         {
             "request": request,
-            "kind": "scan",
+            "kind": "validate",
             "job": job,
         },
     )
 
 
-@web_router.get("/dashboard/scan/status/{job_id}", response_class=HTMLResponse)
-def dashboard_scan_status(request: Request, job_id: str):
-    settings = _settings_or_500()
-    _ensure_dirs_and_db(settings.photo_root, settings.db_path)
+@web_router.get("/dashboard/validate/status/{job_id}", response_class=HTMLResponse)
+def dashboard_validate_status(request: Request, job_id: str):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
 
-    engine = engine_for(settings.db_path)
-    init_db(engine)
     SessionLocal = sessionmaker_for(settings.db_path)
 
     with SessionLocal() as session:
@@ -458,7 +469,7 @@ def dashboard_scan_status(request: Request, job_id: str):
         "partials/dashboard_job_status.html",
         {
             "request": request,
-            "kind": "scan",
+            "kind": "validate",
             "job": job,
         },
     )
@@ -472,18 +483,34 @@ def photo_detail(
     jump: str | None = Query(None, description="Filter context: ISO date/datetime"),
     start: str | None = Query(None, description="Compatibility alias for jump"),
     rating: str | None = Query(None, description="Filter context: rating 0..3"),
+    tag: str | None = Query(None, description="Filter context: tag id"),
 ):
-    settings = _settings_or_500()
+    settings = settings_or_500()
     guid = normalize_guid(guid)
 
-    jump_for_url, rating_int = _extract_filter_context(from_=from_, jump=jump, start=start, rating=rating)
+    jump_for_url, rating_int, tag_ctx = _extract_filter_context(
+        from_=from_,
+        jump=jump,
+        start=start,
+        rating=rating,
+        tag=tag,
+    )
 
-    engine = engine_for(settings.db_path)
-    init_db(engine)
+    tag_id: int | None = None
+    if tag is not None and tag != "":
+        try:
+            tag_id = int(tag)
+        except Exception:
+            tag_id = None
+    if tag_id is None:
+        tag_id = tag_ctx
+
     SessionLocal = sessionmaker_for(settings.db_path)
 
     with SessionLocal() as session:
         row = fetch_photo(session, guid)
+        photo_tags = tags_for_photo(session, guid)
+        all_tags = list_tags(session)
 
     if not row:
         raise HTTPException(status_code=404, detail="photo not found")
@@ -500,6 +527,8 @@ def photo_detail(
             )
             if rating_int is not None:
                 base = base.where(Photo.rating == rating_int)
+            if tag_id is not None:
+                base = base.join(PhotoTag, PhotoTag.photo_guid == Photo.guid).where(PhotoTag.tag_id == tag_id)
 
             next_q = base.where(
                 or_(
@@ -526,6 +555,8 @@ def photo_detail(
         q: dict[str, str] = {"jump": jump_for_url}
         if rating_int is not None:
             q["rating"] = str(rating_int)
+        if tag_id is not None:
+            q["tag"] = str(tag_id)
         if back_url:
             q["from"] = back_url
         return f"/phototank/photo/{target_guid}?{urlencode(q)}"
@@ -540,6 +571,10 @@ def photo_detail(
         "thumb_url": f"/phototank/thumb/{guid}",
         "mid_url": f"/phototank/mid/{guid}",
         "original_url": f"/phototank/original/{guid}",
+        "download_url": f"/phototank/download/original/{guid}",
+        "photo_tags": photo_tags,
+        "tags": all_tags,
+        "tag_id": tag_id,
         "back_url": back_url,
         "prev_url": prev_url,
         "next_url": next_url,

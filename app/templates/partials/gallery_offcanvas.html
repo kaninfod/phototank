@@ -8,6 +8,41 @@
       <button class="btn btn-outline-secondary btn-sm" type="button" id="offcanvasClear">Clear</button>
       <button class="btn btn-danger btn-sm" type="button" id="offcanvasDelete">Delete</button>
     </div>
+
+    <div class="border-top pt-2">
+      <div class="fw-semibold">Tag selected</div>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <select class="form-select form-select-sm" id="offcanvasTagSelect" style="max-width: 14rem;">
+          <option value="" selected disabled>Select a tag…</option>
+          {% for t in tags %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm" type="button" id="offcanvasTagApply">Apply</button>
+        <button class="btn btn-outline-secondary btn-sm" type="button" id="offcanvasTagRemove">Remove</button>
+      </div>
+
+      <div class="mt-2">
+        <div class="small text-muted mb-1">Create new tag</div>
+        <div class="d-flex gap-2 flex-column">
+          <input class="form-control form-control-sm" type="text" id="newTagName" placeholder="Tag name (e.g. Xmas 2024)">
+          <input class="form-control form-control-sm" type="text" id="newTagDesc" placeholder="Description (optional)">
+          <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" id="newTagColor" style="max-width: 14rem;">
+              <option value="primary" selected>primary</option>
+              <option value="secondary">secondary</option>
+              <option value="success">success</option>
+              <option value="danger">danger</option>
+              <option value="warning">warning</option>
+              <option value="info">info</option>
+              <option value="dark">dark</option>
+            </select>
+            <button class="btn btn-outline-primary btn-sm" type="button" id="createAndApplyTag">Create & apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="selectedGrid" class="d-grid" style="grid-template-columns: repeat(4, 1fr); gap: .5rem; overflow:auto;"></div>
   </div>
 </div>

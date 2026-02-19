@@ -22,6 +22,32 @@
           <span class="text-muted">—</span>
         {% endif %}
       </dd>
+
+      <dt class="col-4">Tags</dt>
+      <dd class="col-8" id="photoTags" data-photo-guid="{{ photo.guid }}">
+        {% if photo_tags and photo_tags|length > 0 %}
+          <div class="d-flex flex-wrap gap-1">
+            {% for t in photo_tags %}
+              <span class="badge bg-{{ t.color }} {% if t.color == 'warning' %}text-dark{% else %}text-light{% endif %}">
+                {{ t.name }}
+                <button type="button" class="btn btn-sm btn-link p-0 ms-1 text-reset tag-remove" data-tag-id="{{ t.id }}" aria-label="Remove tag">×</button>
+              </span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+
+        <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
+          <select class="form-select form-select-sm" id="detailTagSelect" style="max-width: 16rem;">
+            <option value="" selected disabled>Add a tag…</option>
+            {% for t in tags %}
+              <option value="{{ t.id }}">{{ t.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="detailTagAdd">Add</button>
+        </div>
+      </dd>
     </dl>
   </div>
 </div>

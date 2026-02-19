@@ -53,38 +53,49 @@
 
       <div class="col-12 col-lg-6">
         <div class="card">
-          <div class="card-header">Import</div>
+          <div class="card-header">Ingest</div>
           <div class="card-body">
-            <button
-              class="btn btn-primary"
+            <form
+              class="row g-2 align-items-end"
               hx-post="/phototank/dashboard/import/start"
               hx-target="#importStatus"
               hx-swap="innerHTML"
-            >Start import</button>
+            >
+              <div class="col-auto">
+                <label class="form-label" for="ingestMode">Mode</label>
+                <select class="form-select" id="ingestMode" name="ingest_mode">
+                  <option value="move" selected>Move (default)</option>
+                  <option value="copy">Copy</option>
+                </select>
+              </div>
+              <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Start ingest</button>
+              </div>
+            </form>
 
             <div id="importStatus" class="mt-3"></div>
           </div>
         </div>
 
         <div class="card mt-3">
-          <div class="card-header">Scan</div>
+          <div class="card-header">Validate</div>
           <div class="card-body">
             <form
               class="row g-2 align-items-end"
-              hx-post="/phototank/dashboard/scan/start"
-              hx-target="#scanStatus"
+              hx-post="/phototank/dashboard/validate/start"
+              hx-target="#validateStatus"
               hx-swap="innerHTML"
             >
               <div class="col-auto">
-                <label class="form-label" for="scanYear">Year (optional)</label>
-                <input class="form-control" id="scanYear" name="year" inputmode="numeric" placeholder="e.g. 2019" />
+                <label class="form-label" for="validateYear">Year (optional)</label>
+                <input class="form-control" id="validateYear" name="year" inputmode="numeric" placeholder="e.g. 2019" />
               </div>
               <div class="col-auto">
-                <button type="submit" class="btn btn-primary">Start scan</button>
+                <button type="submit" class="btn btn-primary">Start validate</button>
               </div>
             </form>
 
-            <div id="scanStatus" class="mt-3"></div>
+            <div id="validateStatus" class="mt-3"></div>
           </div>
         </div>
       </div>

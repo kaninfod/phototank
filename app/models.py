@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Float, Integer, Text
+from sqlalchemy import Float, ForeignKey, Index, Integer, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -30,6 +30,54 @@ class Photo(Base):
 
     indexed_at: Mapped[str] = mapped_column(Text, nullable=False)
     exif_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    name_norm: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Bootstrap theme color keyword: primary|secondary|success|danger|warning|info|dark
+    color: Mapped[str] = mapped_column(Text, nullable=False, default="primary")
+
+
+class PhotoTag(Base):
+    __tablename__ = "photo_tags"
+
+    photo_guid: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("photos.guid", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    tag_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+
+# Indexes for fast timeline pagination and prev/next within filters.
+Index(
+    "idx_photos_dt_guid",
+    Photo.datetime_original,
+    Photo.guid,
+    sqlite_where=Photo.datetime_original.is_not(None),
+)
+Index(
+    "idx_photos_rating_dt_guid",
+    Photo.rating,
+    Photo.datetime_original,
+    Photo.guid,
+    sqlite_where=Photo.datetime_original.is_not(None),
+)
+
+# Tag lookups.
+Index("idx_tags_name_norm", Tag.name_norm, unique=True)
+Index("idx_photo_tags_tag_photo", PhotoTag.tag_id, PhotoTag.photo_guid)
+Index("idx_photo_tags_photo_tag", PhotoTag.photo_guid, PhotoTag.tag_id)
 
 
 class ScanJob(Base):

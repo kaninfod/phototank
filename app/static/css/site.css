@@ -2,7 +2,7 @@
 	width: 100%;
 	aspect-ratio: 1 / 1;
 	object-fit: contain;
-	background-color: var(--bs-dark);
+	background-color: var(--bs-secondary-bg);
 	display: block;
 }
 
@@ -41,4 +41,90 @@
 	object-fit: contain;
 	background-color: var(--bs-dark);
 	display: block;
+}
+
+/* ---------------- Mobile tweaks (gallery grid) ---------------- */
+
+@media (min-width: 576px) {
+	/* Keep gallery filters always visible on desktop, even though we use a collapse wrapper for mobile. */
+	#navFilters.collapse:not(.show) {
+		display: block !important;
+		height: auto !important;
+		visibility: visible !important;
+	}
+	#navFilters.collapsing {
+		height: auto !important;
+	}
+}
+
+@media (max-width: 575.98px) {
+	/* Hide dashboard + selection UX on mobile (CSS-only disable). */
+	.phototank-dashboard-link {
+		display: none !important;
+	}
+	#selectedToggle,
+	#selectedOffcanvas {
+		display: none !important;
+	}
+
+	/* Masonry-style grid on mobile: avoid forced square tiles (no crop, no black bars). */
+	.phototank-gallery-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 4px;
+		/* Only enable masonry row spanning once JS has set grid-row-end spans. */
+	}
+	.phototank-gallery-grid.phototank-masonry {
+		grid-auto-rows: 8px;
+		grid-auto-flow: dense;
+		align-items: start;
+	}
+	.phototank-gallery-grid > .col {
+		display: block;
+		width: auto;
+		padding-left: 0;
+		padding-right: 0;
+		margin: 0;
+	}
+	.phototank-gallery-grid > .col.phototank-wide {
+		grid-column: 1 / -1;
+	}
+	.phototank-gallery-grid .photo-tile {
+		height: auto !important;
+	}
+	.phototank-gallery-grid .thumb-img {
+		aspect-ratio: auto;
+		height: auto;
+		background-color: transparent;
+	}
+
+	/* Tighten the photo grid: no gutters, no card chrome. */
+	.row.row-cols-2.row-cols-sm-3.row-cols-md-4.row-cols-lg-6.g-2 {
+		--bs-gutter-x: 0;
+		--bs-gutter-y: 0;
+	}
+	.photo-tile {
+		border: 0;
+		border-radius: 0;
+	}
+	.photo-tile .card-body {
+		display: none;
+	}
+	.photo-tile .thumb-check {
+		display: none;
+	}
+
+	/* Make footer pager float above typical mobile bottom browser chrome. */
+	footer {
+		position: fixed;
+		left: 0;
+		right: 0;
+		z-index: 1030;
+		bottom: calc(env(safe-area-inset-bottom) + 4px);
+	}
+
+	/* Ensure scroll area can reach below the fixed pager. */
+	main {
+		padding-bottom: calc(env(safe-area-inset-bottom) + 100px);
+	}
 }

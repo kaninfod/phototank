@@ -1,4 +1,18 @@
-<div class="d-flex align-items-center gap-2 flex-wrap">
+<div class="d-flex align-items-center gap-2">
+  <button
+    class="btn btn-outline-light btn-sm d-sm-none"
+    type="button"
+    data-bs-toggle="collapse"
+    data-bs-target="#navFilters"
+    aria-controls="navFilters"
+    aria-expanded="false"
+    aria-label="Search / filters"
+    title="Search / filters"
+  >
+    &#128269;
+  </button>
+
+  <div class="collapse phototank-navfilters" id="navFilters">
   <form class="d-flex align-items-center gap-2 flex-wrap" method="get" action="/phototank/">
     <div class="d-flex align-items-center gap-1">
       <label class="text-light small mb-0" for="jump">Jump</label>
@@ -21,10 +35,22 @@
       </select>
     </div>
 
+    <div class="d-flex align-items-center gap-1">
+      <label class="text-light small mb-0" for="tag">Tag</label>
+      <select class="form-select form-select-sm" id="tag" name="tag" style="width: 10rem;">
+        <option value="" {% if tag_id is none %}selected{% endif %}>All</option>
+        {% for t in tags %}
+          <option value="{{ t.id }}" {% if tag_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
     <button class="btn btn-primary btn-sm" type="submit">Go</button>
   </form>
 
-  <button class="btn btn-outline-light btn-sm" type="button" id="selectedToggle" data-bs-toggle="offcanvas" data-bs-target="#selectedOffcanvas" aria-controls="selectedOffcanvas">
+  </div>
+
+  <button class="btn btn-outline-light btn-sm d-none d-sm-inline-flex" type="button" id="selectedToggle" data-bs-toggle="offcanvas" data-bs-target="#selectedOffcanvas" aria-controls="selectedOffcanvas">
     Selected (<span id="navSelectedCount">0</span>)
   </button>
 </div>

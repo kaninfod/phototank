@@ -2,19 +2,32 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+import threading
 from typing import Any, Optional
 
 from sqlalchemy import Engine, event, func, select, text
+from sqlalchemy import delete
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine
 
-from .models import Base, Photo, ScanJob
+from .models import Base, Photo, PhotoTag, ScanJob, Tag
 from .scanner import PhotoRecord
 
 
 _ENGINES: dict[str, Engine] = {}
 _SESSIONMAKERS: dict[str, sessionmaker] = {}
+_INIT_LOCK = threading.Lock()
+_INIT_DONE: set[str] = set()
+
+
+def _db_key_for_engine(engine: Engine) -> str:
+    # Use a stable key for the database backing this Engine.
+    # For SQLite file URLs this will include the full path.
+    try:
+        return str(engine.url)
+    except Exception:
+        return f"engine:{id(engine)}"
 
 
 def _sqlite_url(db_path: Path) -> str:
@@ -63,36 +76,14 @@ def sessionmaker_for(db_path: Path) -> sessionmaker:
 
 
 def init_db(engine: Engine) -> None:
-    Base.metadata.create_all(engine)
+    key = _db_key_for_engine(engine)
+    with _INIT_LOCK:
+        if key in _INIT_DONE:
+            return
 
-    # Minimal migrations for existing SQLite files (no Alembic yet).
-    with engine.begin() as conn:
-        cols = {
-            row[1]
-            for row in conn.execute(text("PRAGMA table_info('photos')")).fetchall()
-        }
-        if "source_mtime" not in cols:
-            conn.execute(text("ALTER TABLE photos ADD COLUMN source_mtime INTEGER"))
+        Base.metadata.create_all(engine)
 
-        if "rating" not in cols:
-            # Default rating for existing rows is 0.
-            conn.execute(text("ALTER TABLE photos ADD COLUMN rating INTEGER NOT NULL DEFAULT 0"))
-
-        # Indexes for fast timeline pagination and prev/next within filters.
-        conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_photos_dt_guid "
-                "ON photos(datetime_original, guid) "
-                "WHERE datetime_original IS NOT NULL"
-            )
-        )
-        conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_photos_rating_dt_guid "
-                "ON photos(rating, datetime_original, guid) "
-                "WHERE datetime_original IS NOT NULL"
-            )
-        )
+        _INIT_DONE.add(key)
 
 
 def upsert_photo(session: Session, rec: PhotoRecord) -> str:
@@ -111,6 +102,7 @@ def upsert_photo(session: Session, rec: PhotoRecord) -> str:
             "gps_longitude": stmt.excluded.gps_longitude,
             "camera_make": stmt.excluded.camera_make,
             "file_size": stmt.excluded.file_size,
+            "source_mtime": stmt.excluded.source_mtime,
             "width": stmt.excluded.width,
             "height": stmt.excluded.height,
             "user_comment": stmt.excluded.user_comment,
@@ -179,3 +171,90 @@ def fetch_photo(session: Session, guid: str) -> Optional[dict[str, Any]]:
 def count_by_prefix(session: Session, prefix: str) -> int:
     q = select(func.count()).select_from(Photo).where(Photo.rel_path.like(prefix + "%"))
     return int(session.execute(q).scalar_one())
+
+
+def normalize_tag_name(raw: str) -> tuple[str, str]:
+    name = (raw or "").strip()
+    if not name:
+        raise ValueError("tag name cannot be empty")
+
+    # Collapse internal whitespace.
+    name = " ".join(name.split())
+
+    # A conservative limit to keep UI tidy.
+    if len(name) > 80:
+        raise ValueError("tag name too long (max 80)")
+
+    name_norm = name.casefold()
+    return name, name_norm
+
+
+def list_tags(session: Session) -> list[Tag]:
+    return list(session.execute(select(Tag).order_by(Tag.name_norm.asc())).scalars().all())
+
+
+def create_or_get_tag(
+    session: Session,
+    *,
+    name: str,
+    description: str | None,
+    color: str,
+) -> Tag:
+    display, norm = normalize_tag_name(name)
+    color = (color or "primary").strip().lower()
+
+    if color not in {"primary", "secondary", "success", "danger", "warning", "info", "dark"}:
+        raise ValueError("invalid tag color")
+
+    existing = session.execute(select(Tag).where(Tag.name_norm == norm)).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    tag = Tag(
+        name=display,
+        name_norm=norm,
+        description=(description.strip() if description and description.strip() else None),
+        color=color,
+    )
+    session.add(tag)
+    session.commit()
+    session.refresh(tag)
+    return tag
+
+
+def tags_for_photo(session: Session, guid: str) -> list[Tag]:
+    q = (
+        select(Tag)
+        .join(PhotoTag, PhotoTag.tag_id == Tag.id)
+        .where(PhotoTag.photo_guid == guid)
+        .order_by(Tag.name_norm.asc())
+    )
+    return list(session.execute(q).scalars().all())
+
+
+def apply_tag_to_photos(session: Session, *, tag_id: int, guids: list[str]) -> int:
+    if not guids:
+        return 0
+
+    values = [{"photo_guid": g, "tag_id": int(tag_id)} for g in guids]
+    stmt = insert(PhotoTag).values(values).on_conflict_do_nothing(index_elements=[PhotoTag.photo_guid, PhotoTag.tag_id])
+    res = session.execute(stmt)
+    session.commit()
+    try:
+        return int(res.rowcount or 0)
+    except Exception:
+        return 0
+
+
+def remove_tag_from_photos(session: Session, *, tag_id: int, guids: list[str]) -> int:
+    if not guids:
+        return 0
+    try:
+        stmt = delete(PhotoTag).where(PhotoTag.tag_id == int(tag_id)).where(PhotoTag.photo_guid.in_(guids))
+        res = session.execute(stmt)
+        n = int(res.rowcount or 0)
+    except Exception:
+        session.rollback()
+        raise
+    session.commit()
+    return n

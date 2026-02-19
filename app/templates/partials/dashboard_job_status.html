@@ -4,11 +4,11 @@
 {% if kind == 'import' %}
   {% set target_id = 'importStatusWrap' %}
   {% set poll_url = '/phototank/dashboard/import/status/' ~ job.job_id %}
-  {% set title = 'Import job' %}
+  {% set title = 'Ingest job' %}
 {% else %}
-  {% set target_id = 'scanStatusWrap' %}
-  {% set poll_url = '/phototank/dashboard/scan/status/' ~ job.job_id %}
-  {% set title = 'Scan job' %}
+  {% set target_id = 'validateStatusWrap' %}
+  {% set poll_url = '/phototank/dashboard/validate/status/' ~ job.job_id %}
+  {% set title = 'Validate job' %}
 {% endif %}
 
 <div

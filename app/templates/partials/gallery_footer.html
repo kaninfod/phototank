@@ -2,7 +2,7 @@
   <div class="d-flex justify-content-between align-items-center">
     <div>
       {% if has_newer %}
-        <a class="btn btn-outline-secondary" id="btnPrevPage" href="/phototank/?jump={{ jump_date }}&limit={{ limit }}{% if rating is not none %}&rating={{ rating }}{% endif %}&newer={{ newer_cursor }}">Newer</a>
+        <a class="btn btn-outline-secondary" id="btnPrevPage" href="/phototank/?jump={{ jump_date }}&limit={{ limit }}{% if rating is not none %}&rating={{ rating }}{% endif %}{% if tag_id is not none %}&tag={{ tag_id }}{% endif %}&newer={{ newer_cursor }}">Newer</a>
       {% else %}
         <button class="btn btn-outline-secondary" disabled>Newer</button>
       {% endif %}
@@ -10,7 +10,7 @@
 
     <div>
       {% if has_older %}
-        <a class="btn btn-outline-primary" id="btnNextPage" href="/phototank/?jump={{ jump_date }}&limit={{ limit }}{% if rating is not none %}&rating={{ rating }}{% endif %}&older={{ older_cursor }}">Older</a>
+        <a class="btn btn-outline-primary" id="btnNextPage" href="/phototank/?jump={{ jump_date }}&limit={{ limit }}{% if rating is not none %}&rating={{ rating }}{% endif %}{% if tag_id is not none %}&tag={{ tag_id }}{% endif %}&older={{ older_cursor }}">Older</a>
       {% else %}
         <button class="btn btn-outline-primary" disabled>Older</button>
       {% endif %}

@@ -12,6 +12,7 @@ import json
 import logging
 
 from .config import get_settings
+from .db import engine_for, init_db
 from .logging_setup import setup_logging
 from .routes import router
 
@@ -25,6 +26,13 @@ def create_app() -> FastAPI:
         pass
 
     app = FastAPI(title="phototank")
+
+    @app.on_event("startup")
+    def _startup_init_db() -> None:
+        # One-time init at process start; avoids doing DB setup per-request.
+        settings = get_settings()
+        engine = engine_for(settings.db_path)
+        init_db(engine)
 
     validation_logger = logging.getLogger("phototank.validation")
 

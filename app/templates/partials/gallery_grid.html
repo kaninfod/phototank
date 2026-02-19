@@ -3,7 +3,7 @@
 {% else %}
   {% set current = request.url.path ~ (('?' ~ request.url.query) if request.url.query else '') %}
   <div class="h-100 overflow-auto pt-1">
-    <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 g-2">
+    <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 g-2 phototank-gallery-grid">
       {% for it in items %}
         <div class="col">
           <div class="card h-100 photo-tile" data-guid="{{ it.guid }}">
@@ -13,10 +13,10 @@
               <div class="form-check position-absolute top-0 start-0 m-2 thumb-check">
                 <input class="form-check-input select-photo" type="checkbox" data-guid="{{ it.guid }}" aria-label="Select photo">
               </div>
-              <a href="/phototank/photo/{{ it.guid }}?jump={{ jump_date }}{% if rating is not none %}&rating={{ rating }}{% endif %}&from={{ current|urlencode }}" class="stretched-link" aria-label="Open photo"></a>
+              <a href="/phototank/photo/{{ it.guid }}?jump={{ jump_date }}{% if rating is not none %}&rating={{ rating }}{% endif %}{% if tag_id is not none %}&tag={{ tag_id }}{% endif %}&from={{ current|urlencode }}" class="stretched-link" aria-label="Open photo"></a>
             </div>
             <div class="card-body p-2">
-              <div class="small text-muted text-truncate">{{ it.date }}</div>
+              <div class="small text-muted text-truncate">{{ it.date|dt_min }}</div>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
   <div class="d-flex align-items-center gap-2 text-truncate">
-    <div class="navbar-text text-light small text-truncate">{{ photo.datetime_original or "" }}</div>
+    <div class="navbar-text text-light small text-truncate">{{ photo.datetime_original|dt_min }}</div>
     <button type="button" class="badge rounded-pill rating-badge {% if (photo.rating or 0) == 0 %}bg-secondary text-light{% else %}bg-warning text-dark{% endif %}" data-guid="{{ photo.guid }}" data-rating="{{ photo.rating or 0 }}">{{ photo.rating or 0 }}</button>
     <div class="form-check mb-0">
       <input class="form-check-input select-detail" type="checkbox" data-guid="{{ photo.guid }}" id="selectDetail">
