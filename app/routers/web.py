@@ -48,6 +48,30 @@ def _load_job_or_404(*, session, job_id: str) -> ScanJob:
     return job
 
 
+def _job_kind(job: ScanJob) -> str | None:
+    jt = (job.job_type or "").strip().lower()
+    if jt in {"ingest", "import"}:
+        return "import"
+    if jt == "validate":
+        return "validate"
+
+    # Backward compatibility for old rows written before job_type existed.
+    msg = (job.message or "").strip().lower()
+    if msg == "validate":
+        return "validate"
+    if msg.startswith("ingest:"):
+        return "import"
+    return None
+
+
+def _job_sort_key(job: ScanJob) -> tuple[str, str, str]:
+    return (
+        str(job.started_at or ""),
+        str(job.finished_at or ""),
+        str(job.job_id or ""),
+    )
+
+
 
 
 def _safe_back_url(raw: str | None) -> str:
@@ -334,6 +358,41 @@ def dashboard(request: Request):
             .all()
         )
 
+        jobs = list(
+            session.execute(
+                select(ScanJob)
+                .where(ScanJob.message.is_not(None))
+                .order_by(ScanJob.started_at.desc(), ScanJob.job_id.desc())
+                .limit(200)
+            ).scalars().all()
+        )
+
+    import_running: list[ScanJob] = []
+    import_recent: list[ScanJob] = []
+    validate_running: list[ScanJob] = []
+    validate_recent: list[ScanJob] = []
+
+    for job in jobs:
+        kind = _job_kind(job)
+        if kind is None:
+            continue
+        is_running = job.state in {"queued", "running"}
+        if kind == "import":
+            if is_running:
+                import_running.append(job)
+            else:
+                import_recent.append(job)
+        else:
+            if is_running:
+                validate_running.append(job)
+            else:
+                validate_recent.append(job)
+
+    import_running.sort(key=_job_sort_key, reverse=True)
+    import_recent.sort(key=_job_sort_key, reverse=True)
+    validate_running.sort(key=_job_sort_key, reverse=True)
+    validate_recent.sort(key=_job_sort_key, reverse=True)
+
     photos_per_year = [(str(y), int(c)) for (y, c) in year_rows if y is not None]
 
     return templates.TemplateResponse(
@@ -344,6 +403,10 @@ def dashboard(request: Request):
             "page_title": "Dashboard",
             "total_photos": total_photos,
             "photos_per_year": photos_per_year,
+            "import_running_jobs": import_running,
+            "import_recent_jobs": import_recent[:3],
+            "validate_running_jobs": validate_running,
+            "validate_recent_jobs": validate_recent[:3],
         },
     )
 
@@ -368,9 +431,7 @@ def dashboard_import_start(
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
-            create_job(session, job_id=job_id, year=None)
-        job = _load_job_or_404(session=session, job_id=job_id)
-        job.message = f"ingest:{mode}"
+            create_job(session, job_id=job_id, year=None, job_type="ingest")
         session.commit()
 
     background_tasks.add_task(run_ingest_job, job_id, ingest_mode=mode)
@@ -435,9 +496,7 @@ def dashboard_validate_start(
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
-            create_job(session, job_id=job_id, year=year_int)
-        job = _load_job_or_404(session=session, job_id=job_id)
-        job.message = "validate"
+            create_job(session, job_id=job_id, year=year_int, job_type="validate")
         session.commit()
 
     background_tasks.add_task(run_validate_job, job_id)

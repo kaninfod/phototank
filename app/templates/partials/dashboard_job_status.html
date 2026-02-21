@@ -2,11 +2,11 @@
 {% set is_active = state in ['queued', 'running'] %}
 
 {% if kind == 'import' %}
-  {% set target_id = 'importStatusWrap' %}
+  {% set target_id = 'importStatusWrap-' ~ job.job_id %}
   {% set poll_url = '/phototank/dashboard/import/status/' ~ job.job_id %}
   {% set title = 'Ingest job' %}
 {% else %}
-  {% set target_id = 'validateStatusWrap' %}
+  {% set target_id = 'validateStatusWrap-' ~ job.job_id %}
   {% set poll_url = '/phototank/dashboard/validate/status/' ~ job.job_id %}
   {% set title = 'Validate job' %}
 {% endif %}

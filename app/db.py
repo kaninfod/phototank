@@ -123,11 +123,12 @@ def upsert_photo(session: Session, rec: PhotoRecord) -> str:
     return str(existing)
 
 
-def create_job(session: Session, *, job_id: str, year: int | None) -> None:
+def create_job(session: Session, *, job_id: str, year: int | None, job_type: str | None = None) -> None:
     session.add(
         ScanJob(
             job_id=job_id,
             state="queued",
+            job_type=(job_type.strip().lower() if job_type else None),
             year=year,
             processed=0,
             upserted=0,

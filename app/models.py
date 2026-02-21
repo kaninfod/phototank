@@ -126,6 +126,7 @@ class ScanJob(Base):
 
     job_id: Mapped[str] = mapped_column(Text, primary_key=True)
     state: Mapped[str] = mapped_column(Text, nullable=False)  # queued|running|done|failed
+    job_type: Mapped[str | None] = mapped_column(Text, nullable=True)  # ingest|validate
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
