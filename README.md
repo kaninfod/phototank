@@ -45,21 +45,21 @@ docker compose up -d --build
 
 All settings can be provided via env vars (recommended for docker/Portainer). Common ones:
 
-- `PHOTO_ROOT` (required)
-- `DB_PATH` (default: `data/phototank.sqlite`)
-- `DERIV_ROOT` (default: `data/derivatives`)
-- `IMPORT_ROOT` (default: `import`)
-- `FAILED_ROOT` (default: `failed`)
-- `LOG_LEVEL` (default: `INFO`)
-- `LOG_FILE` (optional; e.g. `data/phototank.log`)
+- `GEOCODE_ENABLED` (default: `true`)
+- `GEOCODE_PROVIDER` (default: `geonames`)
+- `GEOCODE_GEONAMES_USERNAME` (required to perform lookups)
+- `GEOCODE_CACHE_CELL_M` (default: `100`; recommended `50..100`)
+- `GEOCODE_RADIUS_KM_PRIMARY` (default: `0.2`)
+- `GEOCODE_RADIUS_KM_FALLBACK` (default: `1.0`)
 
 ## GitHub Actions image build
-
-If you initialize this folder as a git repo and push it to GitHub, the workflow in `.github/workflows/docker-image.yml` will build and push an image to GHCR on every push:
 
 - `ghcr.io/<owner>/<repo>/phototank:latest` (default branch)
 - `ghcr.io/<owner>/<repo>/phototank:sha-...` (every push)
 
+- `GEOCODE_ENABLED=true`
+- `GEOCODE_PROVIDER=geonames`
+- `GEOCODE_GEONAMES_USERNAME=<your_geonames_username>`
 In Portainer, you can switch the compose service from `build: .` to `image: ghcr.io/<owner>/<repo>/phototank:latest`.
 
 ## Configure

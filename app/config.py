@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     log_syslog_protocol: str = "udp"  # udp|tcp
     log_syslog_path: Optional[Path] = None
 
+    geocode_enabled: bool = True
+    geocode_provider: str = "geonames"
+    geocode_geonames_username: Optional[str] = None
+    geocode_cache_cell_m: int = 100
+    geocode_radius_km_primary: float = 0.2
+    geocode_radius_km_fallback: float = 1.0
+    geocode_timeout_s: float = 6.0
+
     @model_validator(mode="after")
     def _resolve_relative_paths(self):
         # Resolve relative paths from the project root so uvicorn cwd doesn't matter.

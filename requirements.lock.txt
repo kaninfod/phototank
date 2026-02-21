@@ -17,6 +17,8 @@ anyio==4.12.1
     #   -r requirements.txt
     #   starlette
     #   watchfiles
+certifi==2026.1.4
+    # via -r requirements.txt
 click==8.3.1
     # via
     #   -r requirements.txt

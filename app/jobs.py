@@ -5,21 +5,53 @@ import os
 import shutil
 from datetime import datetime
 from dataclasses import replace
+import time
 import uuid
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from .config import get_settings
 from .db import sessionmaker_for, upsert_photo
 from .derivatives import ensure_derivatives, mid_path, thumb_path
+from .geocode import enrich_photo_location
 from .models import ScanJob
 from .scanner import build_record, extract_exif_fields, iter_photo_files
 from .util import normalize_guid, resolve_relpath_under
 
 
 logger = logging.getLogger(__name__)
+
+
+def _is_sqlite_lock_error(exc: Exception) -> bool:
+    msg = str(getattr(exc, "orig", exc)).lower()
+    return "database is locked" in msg or "database table is locked" in msg
+
+
+def _commit_with_retry(
+    session: Session,
+    *,
+    label: str,
+    attempts: int = 6,
+    base_sleep_s: float = 0.2,
+) -> bool:
+    for attempt in range(1, attempts + 1):
+        try:
+            session.commit()
+            return True
+        except OperationalError as e:
+            if not _is_sqlite_lock_error(e):
+                raise
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            if attempt >= attempts:
+                logger.error("commit failed after retries label=%s err=%s", label, e)
+                return False
+            time.sleep(base_sleep_s * attempt)
 
 
 def utc_now_iso() -> str:
@@ -180,7 +212,7 @@ def run_validate_job(job_id: str, *, repair_derivatives: bool = True) -> None:
             return
         job.state = "running"
         job.started_at = utc_now_iso()
-        session.commit()
+        _commit_with_retry(session, label="validate-start")
 
     year: int | None = None
     with SessionLocal() as session:
@@ -242,7 +274,13 @@ def run_validate_job(job_id: str, *, repair_derivatives: bool = True) -> None:
                         if deriv.mid_created:
                             mids_done += 1
 
-                    # Validation doesn't change DB rows.
+                    changed = enrich_photo_location(session, settings=settings, photo=photo)
+                    # Keep geocode writes in short transactions so we don't hold
+                    # SQLite write locks while doing network requests.
+                    if changed:
+                        ok = _commit_with_retry(session, label="validate-photo-geocode")
+                        if not ok:
+                            errors += 1
                 except Exception:
                     errors += 1
                     logger.exception("validate error job_id=%s rel_path=%s", job_id, getattr(photo, "rel_path", ""))
@@ -253,7 +291,7 @@ def run_validate_job(job_id: str, *, repair_derivatives: bool = True) -> None:
                     job.thumbs_done = thumbs_done
                     job.mids_done = mids_done
                     job.errors = errors
-                    session.commit()
+                    _commit_with_retry(session, label="validate-progress")
 
             job.processed = processed
             job.upserted = upserted
@@ -262,7 +300,7 @@ def run_validate_job(job_id: str, *, repair_derivatives: bool = True) -> None:
             job.errors = errors
             job.state = "done"
             job.finished_at = utc_now_iso()
-            session.commit()
+            _commit_with_retry(session, label="validate-finish")
 
             logger.info(
                 "validate job done job_id=%s processed=%s thumbs_done=%s mids_done=%s errors=%s",
@@ -288,7 +326,7 @@ def run_validate_job(job_id: str, *, repair_derivatives: bool = True) -> None:
                 job.thumbs_done = thumbs_done
                 job.mids_done = mids_done
                 job.errors = errors
-                session.commit()
+                _commit_with_retry(session, label="validate-failed")
 
 
 def run_ingest_job(job_id: str, *, ingest_mode: str = "move") -> None:
@@ -406,6 +444,10 @@ def run_ingest_job(job_id: str, *, ingest_mode: str = "move") -> None:
                             guid = upsert_photo(session, rec)
                             upserted += 1
 
+                            existing = session.get(Photo, guid)
+                            if existing is not None:
+                                enrich_photo_location(session, settings=settings, photo=existing)
+
                             deriv = ensure_derivatives(
                                 source_path=placed_path,
                                 deriv_root=settings.deriv_root,
@@ -449,6 +491,13 @@ def run_ingest_job(job_id: str, *, ingest_mode: str = "move") -> None:
                         )
                         guid = upsert_photo(session, rec)
                         upserted += 1
+
+                        # Avoid importing Photo at module import time to keep this file lightweight.
+                        from .models import Photo
+
+                        photo = session.get(Photo, guid)
+                        if photo is not None:
+                            enrich_photo_location(session, settings=settings, photo=photo)
 
                         deriv = ensure_derivatives(
                             source_path=placed_path,
