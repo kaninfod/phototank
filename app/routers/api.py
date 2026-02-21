@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import threading
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -8,14 +10,17 @@ from starlette.responses import FileResponse
 
 from ..db import (
     apply_tag_to_photos,
+    create_job,
     create_or_get_tag,
     fetch_photo,
+    get_job,
     list_tags,
     remove_tag_from_photos,
     sessionmaker_for,
     tags_for_photo,
 )
 from ..derivatives import mid_path, thumb_path
+from ..jobs import new_job_id, run_phone_reconcile_job, run_phone_sync_job
 from ..models import Photo
 from ..router_helpers import ensure_deriv_root, ensure_dirs_and_db, settings_or_500
 from ..util import normalize_guid, resolve_relpath_under
@@ -40,9 +45,31 @@ class TagCreateRequest(BaseModel):
 class TagApplyRequest(BaseModel):
     guids: list[str] = Field(..., min_length=1, max_length=2000)
 
+
+class PhoneSyncStartRequest(BaseModel):
+    ip: str | None = None
+    remote_source_path: str | None = None
+    remote_dest_path: str | None = None
+    ssh_user: str | None = None
+    ssh_port: int | None = Field(None, ge=1, le=65535)
+    ssh_key_path: str | None = None
+
+
+class PhoneReconcileStartRequest(BaseModel):
+    ip: str | None = None
+    remote_dest_path: str | None = None
+    ssh_user: str | None = None
+    ssh_port: int | None = Field(None, ge=1, le=65535)
+    ssh_key_path: str | None = None
+
 api_router = APIRouter()
 
 logger = logging.getLogger(__name__)
+
+
+def _start_job_thread(target, /, *args, **kwargs) -> None:
+    t = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
+    t.start()
 
 
 @api_router.get("/thumb/{guid}")
@@ -294,3 +321,136 @@ def remove_tag(tag_id: int, req: TagApplyRequest):
             raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
     return {"tag_id": int(tag_id), "requested": len(guids), "removed": int(removed)}
+
+
+@api_router.post("/jobs/phone-sync/start")
+def start_phone_sync(req: PhoneSyncStartRequest):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    ensure_deriv_root(settings.deriv_root)
+
+    ip = (req.ip or settings.phone_sync_ip or "").strip()
+    remote_source_path = (req.remote_source_path or settings.phone_sync_source_path or "").strip()
+    remote_dest_path = (req.remote_dest_path or settings.phone_sync_dest_path or "").strip()
+    ssh_user = (req.ssh_user or settings.phone_sync_ssh_user or "").strip()
+    ssh_port = int(req.ssh_port or settings.phone_sync_port)
+    ssh_key_path_raw = (req.ssh_key_path or str(settings.phone_sync_ssh_key_path)).strip()
+
+    if not ip:
+        raise HTTPException(status_code=400, detail="missing ip")
+    if not remote_source_path:
+        raise HTTPException(status_code=400, detail="missing remote_source_path")
+    if not remote_dest_path:
+        raise HTTPException(status_code=400, detail="missing remote_dest_path")
+    if not ssh_user:
+        raise HTTPException(status_code=400, detail="missing ssh_user")
+
+    ssh_key_path = Path(ssh_key_path_raw).expanduser()
+
+    SessionLocal = sessionmaker_for(settings.db_path)
+    job_id = new_job_id()
+    with SessionLocal() as session:
+        with session.begin():
+            create_job(session, job_id=job_id, year=None, job_type="phone_sync")
+        session.commit()
+
+    _start_job_thread(
+        run_phone_sync_job,
+        job_id,
+        ssh_user=ssh_user,
+        phone_ip=ip,
+        ssh_port=ssh_port,
+        remote_source_path=remote_source_path,
+        remote_dest_path=remote_dest_path,
+        ssh_key_path=ssh_key_path,
+    )
+
+    return {
+        "job_id": job_id,
+        "job_type": "phone_sync",
+        "state": "queued",
+        "ip": ip,
+        "remote_source_path": remote_source_path,
+        "remote_dest_path": remote_dest_path,
+        "ssh_user": ssh_user,
+        "ssh_port": ssh_port,
+        "ssh_key_path": str(ssh_key_path),
+    }
+
+
+@api_router.post("/jobs/phone-reconcile/start")
+def start_phone_reconcile(req: PhoneReconcileStartRequest):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    ensure_deriv_root(settings.deriv_root)
+
+    ip = (req.ip or settings.phone_sync_ip or "").strip()
+    remote_dest_path = (req.remote_dest_path or settings.phone_sync_dest_path or "").strip()
+    ssh_user = (req.ssh_user or settings.phone_sync_ssh_user or "").strip()
+    ssh_port = int(req.ssh_port or settings.phone_sync_port)
+    ssh_key_path_raw = (req.ssh_key_path or str(settings.phone_sync_ssh_key_path)).strip()
+
+    if not ip:
+        raise HTTPException(status_code=400, detail="missing ip")
+    if not remote_dest_path:
+        raise HTTPException(status_code=400, detail="missing remote_dest_path")
+    if not ssh_user:
+        raise HTTPException(status_code=400, detail="missing ssh_user")
+
+    ssh_key_path = Path(ssh_key_path_raw).expanduser()
+
+    SessionLocal = sessionmaker_for(settings.db_path)
+    job_id = new_job_id()
+    with SessionLocal() as session:
+        with session.begin():
+            create_job(session, job_id=job_id, year=None, job_type="phone_reconcile")
+        session.commit()
+
+    _start_job_thread(
+        run_phone_reconcile_job,
+        job_id,
+        ssh_user=ssh_user,
+        phone_ip=ip,
+        ssh_port=ssh_port,
+        remote_dest_path=remote_dest_path,
+        ssh_key_path=ssh_key_path,
+    )
+
+    return {
+        "job_id": job_id,
+        "job_type": "phone_reconcile",
+        "state": "queued",
+        "ip": ip,
+        "remote_dest_path": remote_dest_path,
+        "ssh_user": ssh_user,
+        "ssh_port": ssh_port,
+        "ssh_key_path": str(ssh_key_path),
+    }
+
+
+@api_router.get("/jobs/{job_id}")
+def get_job_status(job_id: str):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+
+    SessionLocal = sessionmaker_for(settings.db_path)
+    with SessionLocal() as session:
+        job = get_job(session, job_id)
+
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    return {
+        "job_id": job.job_id,
+        "job_type": job.job_type,
+        "state": job.state,
+        "year": job.year,
+        "processed": int(job.processed),
+        "upserted": int(job.upserted),
+        "thumbs_done": int(job.thumbs_done),
+        "mids_done": int(job.mids_done),
+        "errors": int(job.errors),
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+        "message": job.message,
+    }

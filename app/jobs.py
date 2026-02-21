@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import shlex
+import subprocess
 from datetime import datetime
 from dataclasses import replace
 import time
@@ -18,11 +20,47 @@ from .db import sessionmaker_for, upsert_photo
 from .derivatives import ensure_derivatives, mid_path, thumb_path
 from .geocode import enrich_photo_location
 from .models import ScanJob
-from .scanner import build_record, extract_exif_fields, iter_photo_files
+from .scanner import build_record, extract_exif_fields, iter_photo_files, try_datetime_from_filename
 from .util import normalize_guid, resolve_relpath_under
 
 
 logger = logging.getLogger(__name__)
+
+
+def _set_job_progress(
+    SessionLocal,
+    *,
+    job_id: str,
+    message: str | None = None,
+    state: str | None = None,
+    processed: int | None = None,
+    upserted: int | None = None,
+    thumbs_done: int | None = None,
+    mids_done: int | None = None,
+    errors: int | None = None,
+    finished: bool = False,
+) -> None:
+    with SessionLocal() as session:
+        job = session.get(ScanJob, job_id)
+        if job is None:
+            return
+        if message is not None:
+            job.message = message
+        if state is not None:
+            job.state = state
+        if processed is not None:
+            job.processed = processed
+        if upserted is not None:
+            job.upserted = upserted
+        if thumbs_done is not None:
+            job.thumbs_done = thumbs_done
+        if mids_done is not None:
+            job.mids_done = mids_done
+        if errors is not None:
+            job.errors = errors
+        if finished:
+            job.finished_at = utc_now_iso()
+        _commit_with_retry(session, label="set-job-progress")
 
 
 def _is_sqlite_lock_error(exc: Exception) -> bool:
@@ -144,6 +182,10 @@ def _infer_datetime_for_import(path: Path, datetime_fallback_order: list[str]) -
     dt, *_rest = extract_exif_fields(path)
     if dt:
         return dt
+    if "filename" in datetime_fallback_order:
+        dt = try_datetime_from_filename(path)
+        if dt:
+            return dt
     if "mtime" in datetime_fallback_order:
         try:
             return datetime.fromtimestamp(path.stat().st_mtime).replace(microsecond=0).isoformat()
@@ -330,7 +372,14 @@ def run_validate_job(job_id: str, *, repair_derivatives: bool = True, repair_mid
                 _commit_with_retry(session, label="validate-failed")
 
 
-def run_ingest_job(job_id: str, *, ingest_mode: str = "move") -> None:
+def run_ingest_job(
+    job_id: str,
+    *,
+    ingest_mode: str = "move",
+    import_root_override: Path | None = None,
+    failed_root_override: Path | None = None,
+    manage_job_state: bool = True,
+) -> dict[str, object]:
     settings = get_settings()
 
     if ingest_mode not in {"move", "copy"}:
@@ -350,14 +399,22 @@ def run_ingest_job(job_id: str, *, ingest_mode: str = "move") -> None:
     with SessionLocal() as session:
         job = session.get(ScanJob, job_id)
         if job is None:
-            return
-        job.state = "running"
-        job.started_at = utc_now_iso()
-        session.commit()
+            return {
+                "processed": 0,
+                "upserted": 0,
+                "thumbs_done": 0,
+                "mids_done": 0,
+                "errors": 0,
+                "inserted_guids": [],
+            }
+        if manage_job_state:
+            job.state = "running"
+            job.started_at = utc_now_iso()
+        _commit_with_retry(session, label="ingest-start")
 
     exts = settings.extensions_set()
-    import_root = settings.import_root
-    failed_root = settings.failed_root
+    import_root = (import_root_override or settings.import_root).resolve()
+    failed_root = (failed_root_override or settings.failed_root).resolve()
     import_root.mkdir(parents=True, exist_ok=True)
     failed_root.mkdir(parents=True, exist_ok=True)
     settings.deriv_root.mkdir(parents=True, exist_ok=True)
@@ -367,6 +424,7 @@ def run_ingest_job(job_id: str, *, ingest_mode: str = "move") -> None:
     thumbs_done = 0
     mids_done = 0
     errors = 0
+    inserted_guids: set[str] = set()
 
     failed_root_resolved = failed_root.resolve()
 
@@ -490,11 +548,16 @@ def run_ingest_job(job_id: str, *, ingest_mode: str = "move") -> None:
                             placed_path,
                             datetime_fallback_order=settings.datetime_fallback_order(),
                         )
-                        guid = upsert_photo(session, rec)
-                        upserted += 1
-
-                        # Avoid importing Photo at module import time to keep this file lightweight.
                         from .models import Photo
+
+                        existing_guid = session.execute(
+                            select(Photo.guid).where(Photo.rel_path == rec.rel_path)
+                        ).scalar_one_or_none()
+
+                        guid = upsert_photo(session, rec)
+                        if existing_guid is None:
+                            inserted_guids.add(guid)
+                        upserted += 1
 
                         photo = session.get(Photo, guid)
                         if photo is not None:
@@ -566,16 +629,17 @@ def run_ingest_job(job_id: str, *, ingest_mode: str = "move") -> None:
                     job.thumbs_done = thumbs_done
                     job.mids_done = mids_done
                     job.errors = errors
-                    session.commit()
+                    _commit_with_retry(session, label="ingest-progress")
 
             job.processed = processed
             job.upserted = upserted
             job.thumbs_done = thumbs_done
             job.mids_done = mids_done
             job.errors = errors
-            job.state = "done"
-            job.finished_at = utc_now_iso()
-            session.commit()
+            if manage_job_state:
+                job.state = "done"
+                job.finished_at = utc_now_iso()
+            _commit_with_retry(session, label="ingest-finish")
 
             logger.info(
                 "ingest job done job_id=%s ingest_mode=%s processed=%s upserted=%s thumbs_done=%s mids_done=%s errors=%s",
@@ -588,20 +652,393 @@ def run_ingest_job(job_id: str, *, ingest_mode: str = "move") -> None:
                 errors,
             )
 
+            return {
+                "processed": processed,
+                "upserted": upserted,
+                "thumbs_done": thumbs_done,
+                "mids_done": mids_done,
+                "errors": errors,
+                "inserted_guids": sorted(inserted_guids),
+            }
+
         finally:
             session.close()
 
     except Exception as e:
         logger.exception("ingest job crashed job_id=%s ingest_mode=%s", job_id, ingest_mode)
+        if manage_job_state:
+            with SessionLocal() as session:
+                job = session.get(ScanJob, job_id)
+                if job is not None:
+                    job.state = "failed"
+                    job.message = f"{type(e).__name__}: {e}"
+                    job.finished_at = utc_now_iso()
+                    job.processed = processed
+                    job.upserted = upserted
+                    job.thumbs_done = thumbs_done
+                    job.mids_done = mids_done
+                    job.errors = errors
+                    _commit_with_retry(session, label="ingest-failed")
+        return {
+            "processed": processed,
+            "upserted": upserted,
+            "thumbs_done": thumbs_done,
+            "mids_done": mids_done,
+            "errors": errors,
+            "inserted_guids": sorted(inserted_guids),
+        }
+
+
+def _run_command(args: list[str], *, label: str) -> subprocess.CompletedProcess[str]:
+    logger.info("%s: %s", label, " ".join(args))
+    proc = subprocess.run(args, capture_output=True, text=True)
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        stdout = (proc.stdout or "").strip()
+        tail = stderr[-800:] if stderr else stdout[-800:]
+        raise RuntimeError(f"{label} failed (exit={proc.returncode}): {tail}")
+    return proc
+
+
+def run_phone_sync_job(
+    job_id: str,
+    *,
+    ssh_user: str,
+    phone_ip: str,
+    ssh_port: int,
+    remote_source_path: str,
+    remote_dest_path: str,
+    ssh_key_path: Path,
+) -> None:
+    settings = get_settings()
+    SessionLocal = sessionmaker_for(settings.db_path)
+
+    processed = 0
+    upserted = 0
+    thumbs_done = 0
+    mids_done = 0
+    errors = 0
+
+    try:
         with SessionLocal() as session:
             job = session.get(ScanJob, job_id)
-            if job is not None:
-                job.state = "failed"
-                job.message = f"{type(e).__name__}: {e}"
-                job.finished_at = utc_now_iso()
-                job.processed = processed
-                job.upserted = upserted
-                job.thumbs_done = thumbs_done
-                job.mids_done = mids_done
-                job.errors = errors
-                session.commit()
+            if job is None:
+                return
+            job.state = "running"
+            job.started_at = utc_now_iso()
+            job.message = "phase=preflight"
+            _commit_with_retry(session, label="phone-sync-start")
+
+        if shutil.which("ssh") is None:
+            raise RuntimeError("ssh not found in PATH")
+        if shutil.which("rsync") is None:
+            raise RuntimeError("rsync not found in PATH")
+
+        key_path = ssh_key_path.expanduser()
+        if not key_path.exists():
+            raise RuntimeError(f"ssh key not found: {key_path}")
+
+        ensure_import_root = settings.import_root.resolve()
+        ensure_import_root.mkdir(parents=True, exist_ok=True)
+        settings.deriv_root.mkdir(parents=True, exist_ok=True)
+
+        stage_root = ensure_import_root / "_phone_sync" / job_id
+        pull_root = stage_root / "pull"
+        failed_root = stage_root / "failed"
+        pull_root.mkdir(parents=True, exist_ok=True)
+        failed_root.mkdir(parents=True, exist_ok=True)
+
+        target = f"{ssh_user}@{phone_ip}"
+        ssh_cmd = (
+            "ssh"
+            " -F /dev/null"
+            f" -i {shlex.quote(str(key_path))}"
+            f" -p {int(ssh_port)}"
+            " -o IdentitiesOnly=yes"
+            " -o BatchMode=yes"
+            " -o StrictHostKeyChecking=accept-new"
+        )
+
+        _set_job_progress(SessionLocal, job_id=job_id, message="phase=preflight ssh")
+        _run_command(
+            [
+                "ssh",
+                "-F",
+                "/dev/null",
+                "-i",
+                str(key_path),
+                "-p",
+                str(int(ssh_port)),
+                "-o",
+                "IdentitiesOnly=yes",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+                target,
+                "echo",
+                "ok",
+            ],
+            label="phone-sync ssh check",
+        )
+
+        _set_job_progress(SessionLocal, job_id=job_id, message="phase=pull")
+        _run_command(
+            [
+                "rsync",
+                "-a",
+                "-e",
+                ssh_cmd,
+                f"{target}:{remote_source_path.rstrip('/')}/",
+                f"{pull_root.as_posix().rstrip('/')}/",
+            ],
+            label="phone-sync pull",
+        )
+
+        _set_job_progress(SessionLocal, job_id=job_id, message="phase=import")
+        ingest_result = run_ingest_job(
+            job_id,
+            ingest_mode="move",
+            import_root_override=pull_root,
+            failed_root_override=failed_root,
+            manage_job_state=False,
+        )
+
+        processed = int(ingest_result.get("processed", 0))
+        upserted = int(ingest_result.get("upserted", 0))
+        thumbs_done = int(ingest_result.get("thumbs_done", 0))
+        mids_done = int(ingest_result.get("mids_done", 0))
+        errors = int(ingest_result.get("errors", 0))
+
+        inserted_guids = [str(g) for g in ingest_result.get("inserted_guids", [])]
+
+        _set_job_progress(
+            SessionLocal,
+            job_id=job_id,
+            message=f"phase=push preparing inserted={len(inserted_guids)}",
+            processed=processed,
+            upserted=upserted,
+            thumbs_done=thumbs_done,
+            mids_done=mids_done,
+            errors=errors,
+        )
+
+        rel_mid_paths: list[str] = []
+        for guid in inserted_guids:
+            mp = mid_path(settings.deriv_root, guid)
+            if mp.exists():
+                rel_mid_paths.append(f"mid/{guid[:2]}/{guid[2:4]}/{guid}.webp")
+
+        if rel_mid_paths:
+            files_from_path = stage_root / "push_files.txt"
+            files_from_path.write_text("\n".join(rel_mid_paths) + "\n", encoding="utf-8")
+
+            _run_command(
+                [
+                    "ssh",
+                    "-F",
+                    "/dev/null",
+                    "-i",
+                    str(key_path),
+                    "-p",
+                    str(int(ssh_port)),
+                    "-o",
+                    "IdentitiesOnly=yes",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "StrictHostKeyChecking=accept-new",
+                    target,
+                    "mkdir",
+                    "-p",
+                    f"{remote_dest_path.rstrip('/')}/mid",
+                ],
+                label="phone-sync remote mkdir",
+            )
+
+            _set_job_progress(
+                SessionLocal,
+                job_id=job_id,
+                message=f"phase=push mids={len(rel_mid_paths)}",
+            )
+            _run_command(
+                [
+                    "rsync",
+                    "-a",
+                    "--files-from",
+                    str(files_from_path),
+                    "-e",
+                    ssh_cmd,
+                    f"{settings.deriv_root.as_posix().rstrip('/')}/",
+                    f"{target}:{remote_dest_path.rstrip('/')}/",
+                ],
+                label="phone-sync push",
+            )
+
+        _set_job_progress(
+            SessionLocal,
+            job_id=job_id,
+            state="done",
+            message=f"done pulled={processed} imported={upserted} pushed_mids={len(rel_mid_paths)}",
+            processed=processed,
+            upserted=upserted,
+            thumbs_done=thumbs_done,
+            mids_done=mids_done,
+            errors=errors,
+            finished=True,
+        )
+    except Exception as e:
+        logger.exception("phone sync job crashed job_id=%s", job_id)
+        _set_job_progress(
+            SessionLocal,
+            job_id=job_id,
+            state="failed",
+            message=f"{type(e).__name__}: {e}",
+            processed=processed,
+            upserted=upserted,
+            thumbs_done=thumbs_done,
+            mids_done=mids_done,
+            errors=errors + 1,
+            finished=True,
+        )
+
+
+def run_phone_reconcile_job(
+    job_id: str,
+    *,
+    ssh_user: str,
+    phone_ip: str,
+    ssh_port: int,
+    remote_dest_path: str,
+    ssh_key_path: Path,
+) -> None:
+    settings = get_settings()
+    SessionLocal = sessionmaker_for(settings.db_path)
+
+    processed = 0
+    errors = 0
+
+    try:
+        with SessionLocal() as session:
+            job = session.get(ScanJob, job_id)
+            if job is None:
+                return
+            job.state = "running"
+            job.started_at = utc_now_iso()
+            job.message = "phase=preflight"
+            _commit_with_retry(session, label="phone-reconcile-start")
+
+        if shutil.which("ssh") is None:
+            raise RuntimeError("ssh not found in PATH")
+        if shutil.which("rsync") is None:
+            raise RuntimeError("rsync not found in PATH")
+
+        key_path = ssh_key_path.expanduser()
+        if not key_path.exists():
+            raise RuntimeError(f"ssh key not found: {key_path}")
+
+        local_mid_root = (settings.deriv_root / "mid").resolve()
+        local_mid_root.mkdir(parents=True, exist_ok=True)
+
+        target = f"{ssh_user}@{phone_ip}"
+        ssh_cmd = (
+            "ssh"
+            " -F /dev/null"
+            f" -i {shlex.quote(str(key_path))}"
+            f" -p {int(ssh_port)}"
+            " -o IdentitiesOnly=yes"
+            " -o BatchMode=yes"
+            " -o StrictHostKeyChecking=accept-new"
+        )
+
+        _set_job_progress(SessionLocal, job_id=job_id, message="phase=preflight ssh")
+        _run_command(
+            [
+                "ssh",
+                "-F",
+                "/dev/null",
+                "-i",
+                str(key_path),
+                "-p",
+                str(int(ssh_port)),
+                "-o",
+                "IdentitiesOnly=yes",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+                target,
+                "echo",
+                "ok",
+            ],
+            label="phone-reconcile ssh check",
+        )
+
+        _set_job_progress(SessionLocal, job_id=job_id, message="phase=prepare remote")
+        _run_command(
+            [
+                "ssh",
+                "-F",
+                "/dev/null",
+                "-i",
+                str(key_path),
+                "-p",
+                str(int(ssh_port)),
+                "-o",
+                "IdentitiesOnly=yes",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+                target,
+                "mkdir",
+                "-p",
+                f"{remote_dest_path.rstrip('/')}/mid",
+            ],
+            label="phone-reconcile remote mkdir",
+        )
+
+        processed = sum(1 for p in local_mid_root.rglob("*.webp") if p.is_file())
+        _set_job_progress(
+            SessionLocal,
+            job_id=job_id,
+            message=f"phase=push mids={processed}",
+            processed=processed,
+            mids_done=processed,
+        )
+
+        _run_command(
+            [
+                "rsync",
+                "-a",
+                "--delete",
+                "-e",
+                ssh_cmd,
+                f"{local_mid_root.as_posix().rstrip('/')}/",
+                f"{target}:{remote_dest_path.rstrip('/')}/mid/",
+            ],
+            label="phone-reconcile push",
+        )
+
+        _set_job_progress(
+            SessionLocal,
+            job_id=job_id,
+            state="done",
+            message=f"done reconciled_mids={processed}",
+            processed=processed,
+            mids_done=processed,
+            errors=0,
+            finished=True,
+        )
+    except Exception as e:
+        logger.exception("phone reconcile job crashed job_id=%s", job_id)
+        _set_job_progress(
+            SessionLocal,
+            job_id=job_id,
+            state="failed",
+            message=f"{type(e).__name__}: {e}",
+            processed=processed,
+            mids_done=processed,
+            errors=errors + 1,
+            finished=True,
+        )

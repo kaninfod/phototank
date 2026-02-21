@@ -4,6 +4,8 @@ import json
 import logging
 import math
 import ssl
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -22,6 +24,48 @@ except Exception:
 
 
 logger = logging.getLogger(__name__)
+
+
+_GEONAMES_THROTTLE_LOCK = threading.Lock()
+_GEONAMES_NEXT_REQUEST_AT_S = 0.0
+_GEONAMES_HALT_UNTIL_S = 0.0
+
+
+def _apply_geonames_throttle(settings: Settings) -> None:
+    global _GEONAMES_NEXT_REQUEST_AT_S
+
+    min_interval_s = max(0.0, float(getattr(settings, "geocode_min_interval_s", 0.25)))
+    if min_interval_s <= 0:
+        return
+
+    with _GEONAMES_THROTTLE_LOCK:
+        now = time.monotonic()
+        wait_s = _GEONAMES_NEXT_REQUEST_AT_S - now
+        if wait_s > 0:
+            time.sleep(wait_s)
+            now = time.monotonic()
+        _GEONAMES_NEXT_REQUEST_AT_S = now + min_interval_s
+
+
+def _mark_geonames_hourly_limit_hit(settings: Settings) -> None:
+    global _GEONAMES_HALT_UNTIL_S
+    cooldown_s = max(60.0, float(getattr(settings, "geocode_hourly_limit_cooldown_s", 3600.0)))
+    with _GEONAMES_THROTTLE_LOCK:
+        _GEONAMES_HALT_UNTIL_S = max(_GEONAMES_HALT_UNTIL_S, time.monotonic() + cooldown_s)
+
+
+def _geonames_is_halted() -> bool:
+    with _GEONAMES_THROTTLE_LOCK:
+        return time.monotonic() < _GEONAMES_HALT_UNTIL_S
+
+
+def _is_geonames_hourly_limit_error(err: Exception) -> bool:
+    msg = str(err).casefold()
+    return (
+        "hourly limit" in msg
+        or "credits" in msg and "exceeded" in msg
+        or "please throttle your requests" in msg
+    )
 
 
 def utc_now_iso() -> str:
@@ -221,6 +265,13 @@ def enrich_photo_location(session: Session, *, settings: Settings, photo: Photo)
     if not (settings.geocode_geonames_username or "").strip():
         return False
 
+    if _geonames_is_halted():
+        photo.geo_provider = provider
+        photo.geo_lookup_at = utc_now_iso()
+        photo.geo_lookup_status = "error"
+        photo.geo_lookup_error = "RuntimeError: GeoNames hourly limit previously exceeded; temporarily throttled"
+        return True
+
     lat = float(photo.gps_latitude)
     lon = float(photo.gps_longitude)
 
@@ -236,6 +287,7 @@ def enrich_photo_location(session: Session, *, settings: Settings, photo: Photo)
         return True
 
     try:
+        _apply_geonames_throttle(settings)
         result = _lookup_provider_data(settings, lat=lat, lon=lon)
     except HTTPError as e:
         detail = f"HTTPError: HTTP {getattr(e, 'code', '')}"
@@ -252,6 +304,8 @@ def enrich_photo_location(session: Session, *, settings: Settings, photo: Photo)
         logger.warning("reverse geocode failed guid=%s err=%s", getattr(photo, "guid", ""), detail)
         return True
     except (URLError, TimeoutError, RuntimeError) as e:
+        if _is_geonames_hourly_limit_error(e):
+            _mark_geonames_hourly_limit_hit(settings)
         photo.geo_provider = provider
         photo.geo_cache_key = cache_key
         photo.geo_lookup_at = now

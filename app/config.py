@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     geocode_radius_km_primary: float = 0.2
     geocode_radius_km_fallback: float = 1.0
     geocode_timeout_s: float = 6.0
+    geocode_min_interval_s: float = 0.25
+    geocode_hourly_limit_cooldown_s: float = 3600.0
+
+    phone_sync_ssh_user: str | None = None
+    phone_sync_ip: str | None = None
+    phone_sync_port: int = 22
+    phone_sync_source_path: str | None = None
+    phone_sync_dest_path: str | None = None
+    phone_sync_ssh_key_path: Path = Path("~/.ssh/id_ed25519")
 
     @model_validator(mode="after")
     def _resolve_relative_paths(self):
@@ -69,6 +78,8 @@ class Settings(BaseSettings):
             self.log_file = resolve_under(repo_root, self.log_file)
         if self.log_syslog_path is not None:
             self.log_syslog_path = resolve_under(repo_root, self.log_syslog_path)
+        if self.phone_sync_ssh_key_path is not None:
+            self.phone_sync_ssh_key_path = self.phone_sync_ssh_key_path.expanduser()
         return self
 
     def extensions_set(self) -> set[str]:
@@ -87,14 +98,14 @@ class Settings(BaseSettings):
     def datetime_fallback_order(self) -> list[str]:
         """Return fallback order for datetime_original when EXIF is missing.
 
-        Supported values: json, mtime. If unset, returns an empty list (EXIF-only).
+        Supported values: json, filename, mtime. If unset, returns an empty list (EXIF-only).
         """
         if not self.datetime_fallback:
             return []
         order: list[str] = []
         for part in self.datetime_fallback.split(","):
             p = part.strip().lower()
-            if p in ("json", "mtime"):
+            if p in ("json", "filename", "mtime"):
                 order.append(p)
         return order
 

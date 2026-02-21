@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -35,8 +36,11 @@ def utc_now_iso() -> str:
 
 
 def iter_photo_files(photo_root: Path, exts: set[str]) -> Iterable[Path]:
-    for root, _, files in os.walk(photo_root):
+    for root, dirs, files in os.walk(photo_root):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
         for name in files:
+            if name.startswith("."):
+                continue
             path = Path(root) / name
             if path.suffix.lower() in exts:
                 yield path
@@ -119,6 +123,24 @@ def _try_datetime_from_mtime(media_path: Path) -> Optional[str]:
     try:
         dt = datetime.fromtimestamp(media_path.stat().st_mtime)
         return dt.replace(microsecond=0).isoformat()
+    except Exception:
+        return None
+
+
+def try_datetime_from_filename(media_path: Path) -> Optional[str]:
+    name = media_path.stem
+
+    m = re.search(r"(?<!\d)(19\d{2}|20\d{2})(\d{2})(\d{2})(?!\d)", name)
+    if not m:
+        m = re.search(r"(?<!\d)(19\d{2})[-_](\d{2})[-_](\d{2})(?!\d)", name)
+    if not m:
+        m = re.search(r"(?<!\d)(20\d{2})[-_](\d{2})[-_](\d{2})(?!\d)", name)
+    if not m:
+        return None
+
+    try:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return datetime(y, mo, d, 0, 0, 0).isoformat()
     except Exception:
         return None
 
@@ -207,6 +229,8 @@ def build_record(photo_root: Path, path: Path, *, datetime_fallback_order: Optio
         for fb in datetime_fallback_order:
             if fb == "json":
                 datetime_original = _try_datetime_from_sidecar_json(path)
+            elif fb == "filename":
+                datetime_original = try_datetime_from_filename(path)
             elif fb == "mtime":
                 datetime_original = _try_datetime_from_mtime(path)
             if datetime_original is not None:

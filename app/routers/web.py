@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, func, or_, select
 
 from ..db import create_job, fetch_photo, get_job, list_tags, sessionmaker_for, tags_for_photo
-from ..jobs import new_job_id, run_ingest_job, run_validate_job
+from ..jobs import new_job_id, run_ingest_job, run_phone_reconcile_job, run_phone_sync_job, run_validate_job
 from ..models import Photo, PhotoTag, ScanJob
 from ..router_helpers import ensure_deriv_root, ensure_dirs_and_db, ensure_import_dirs, settings_or_500
 from ..util import b64decode_cursor, b64encode_cursor, normalize_guid
@@ -52,16 +52,24 @@ def _load_job_or_404(*, session, job_id: str) -> ScanJob:
 def _job_kind(job: ScanJob) -> str | None:
     jt = (job.job_type or "").strip().lower()
     if jt in {"ingest", "import"}:
-        return "import"
+        return "ingest"
     if jt == "validate":
         return "validate"
+    if jt == "phone_sync":
+        return "phone_sync"
+    if jt == "phone_reconcile":
+        return "phone_reconcile"
 
     # Backward compatibility for old rows written before job_type existed.
     msg = (job.message or "").strip().lower()
     if msg == "validate":
         return "validate"
     if msg.startswith("ingest:"):
-        return "import"
+        return "ingest"
+    if msg.startswith("phase="):
+        return "phone_sync"
+    if msg.startswith("done reconciled_mids="):
+        return "phone_reconcile"
 
     # Heuristic fallback for legacy/API rows where type metadata wasn't set.
     # Validate jobs usually carry a year scope; ingest jobs do not.
@@ -438,31 +446,21 @@ def dashboard(request: Request):
             ).scalars().all()
         )
 
-    import_running: list[ScanJob] = []
-    import_recent: list[ScanJob] = []
-    validate_running: list[ScanJob] = []
-    validate_recent: list[ScanJob] = []
+    running_jobs: list[tuple[str, ScanJob]] = []
+    recent_jobs: list[tuple[str, ScanJob]] = []
 
     for job in jobs:
         kind = _job_kind(job)
         if kind is None:
             continue
         is_running = job.state in {"queued", "running"}
-        if kind == "import":
-            if is_running:
-                import_running.append(job)
-            else:
-                import_recent.append(job)
+        if is_running:
+            running_jobs.append((kind, job))
         else:
-            if is_running:
-                validate_running.append(job)
-            else:
-                validate_recent.append(job)
+            recent_jobs.append((kind, job))
 
-    import_running.sort(key=_job_sort_key, reverse=True)
-    import_recent.sort(key=_job_sort_key, reverse=True)
-    validate_running.sort(key=_job_sort_key, reverse=True)
-    validate_recent.sort(key=_job_sort_key, reverse=True)
+    running_jobs.sort(key=lambda x: _job_sort_key(x[1]), reverse=True)
+    recent_jobs.sort(key=lambda x: _job_sort_key(x[1]), reverse=True)
 
     photos_per_year = [(str(y), int(c)) for (y, c) in year_rows if y is not None]
 
@@ -474,10 +472,13 @@ def dashboard(request: Request):
             "page_title": "Dashboard",
             "total_photos": total_photos,
             "photos_per_year": photos_per_year,
-            "import_running_jobs": import_running,
-            "import_recent_jobs": import_recent[:3],
-            "validate_running_jobs": validate_running,
-            "validate_recent_jobs": validate_recent[:3],
+            "running_jobs": running_jobs,
+            "recent_jobs": recent_jobs[:20],
+            "phone_sync_default_user": settings.phone_sync_ssh_user or "",
+            "phone_sync_default_ip": settings.phone_sync_ip or "",
+            "phone_sync_default_port": int(settings.phone_sync_port),
+            "phone_sync_default_source": settings.phone_sync_source_path or "",
+            "phone_sync_default_dest": settings.phone_sync_dest_path or "",
         },
     )
 
@@ -513,7 +514,7 @@ def dashboard_import_start(
         "partials/dashboard_job_status.html",
         {
             "request": request,
-            "kind": "import",
+            "kind": "ingest",
             "job": job,
         },
     )
@@ -533,7 +534,7 @@ def dashboard_import_status(request: Request, job_id: str):
         "partials/dashboard_job_status.html",
         {
             "request": request,
-            "kind": "import",
+            "kind": (_job_kind(job) or "ingest"),
             "job": job,
         },
     )
@@ -598,7 +599,144 @@ def dashboard_validate_status(request: Request, job_id: str):
         "partials/dashboard_job_status.html",
         {
             "request": request,
-            "kind": "validate",
+            "kind": (_job_kind(job) or "validate"),
+            "job": job,
+        },
+    )
+
+
+@web_router.post("/dashboard/phone-sync/start", response_class=HTMLResponse)
+def dashboard_phone_sync_start(
+    request: Request,
+    ip: str | None = Form(None),
+    remote_source_path: str | None = Form(None),
+    remote_dest_path: str | None = Form(None),
+    ssh_user: str | None = Form(None),
+    ssh_port: int | None = Form(None),
+):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    ensure_deriv_root(settings.deriv_root)
+
+    ip_value = (ip or settings.phone_sync_ip or "").strip()
+    src_value = (remote_source_path or settings.phone_sync_source_path or "").strip()
+    dst_value = (remote_dest_path or settings.phone_sync_dest_path or "").strip()
+    user_value = (ssh_user or settings.phone_sync_ssh_user or "").strip()
+    port_value = int(ssh_port or settings.phone_sync_port)
+    key_path = settings.phone_sync_ssh_key_path.expanduser()
+
+    if not ip_value:
+        raise HTTPException(status_code=400, detail="missing ip")
+    if not src_value:
+        raise HTTPException(status_code=400, detail="missing remote_source_path")
+    if not dst_value:
+        raise HTTPException(status_code=400, detail="missing remote_dest_path")
+    if not user_value:
+        raise HTTPException(status_code=400, detail="missing ssh_user")
+
+    SessionLocal = sessionmaker_for(settings.db_path)
+
+    job_id = new_job_id()
+    with SessionLocal() as session:
+        with session.begin():
+            create_job(session, job_id=job_id, year=None, job_type="phone_sync")
+        session.commit()
+
+    _start_job_thread(
+        run_phone_sync_job,
+        job_id,
+        ssh_user=user_value,
+        phone_ip=ip_value,
+        ssh_port=port_value,
+        remote_source_path=src_value,
+        remote_dest_path=dst_value,
+        ssh_key_path=key_path,
+    )
+
+    with SessionLocal() as session:
+        job = _load_job_or_404(session=session, job_id=job_id)
+
+    return templates.TemplateResponse(
+        "partials/dashboard_job_status.html",
+        {
+            "request": request,
+            "kind": "phone_sync",
+            "job": job,
+        },
+    )
+
+
+@web_router.post("/dashboard/phone-reconcile/start", response_class=HTMLResponse)
+def dashboard_phone_reconcile_start(
+    request: Request,
+    ip: str | None = Form(None),
+    remote_dest_path: str | None = Form(None),
+    ssh_user: str | None = Form(None),
+    ssh_port: int | None = Form(None),
+):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    ensure_deriv_root(settings.deriv_root)
+
+    ip_value = (ip or settings.phone_sync_ip or "").strip()
+    dst_value = (remote_dest_path or settings.phone_sync_dest_path or "").strip()
+    user_value = (ssh_user or settings.phone_sync_ssh_user or "").strip()
+    port_value = int(ssh_port or settings.phone_sync_port)
+    key_path = settings.phone_sync_ssh_key_path.expanduser()
+
+    if not ip_value:
+        raise HTTPException(status_code=400, detail="missing ip")
+    if not dst_value:
+        raise HTTPException(status_code=400, detail="missing remote_dest_path")
+    if not user_value:
+        raise HTTPException(status_code=400, detail="missing ssh_user")
+
+    SessionLocal = sessionmaker_for(settings.db_path)
+
+    job_id = new_job_id()
+    with SessionLocal() as session:
+        with session.begin():
+            create_job(session, job_id=job_id, year=None, job_type="phone_reconcile")
+        session.commit()
+
+    _start_job_thread(
+        run_phone_reconcile_job,
+        job_id,
+        ssh_user=user_value,
+        phone_ip=ip_value,
+        ssh_port=port_value,
+        remote_dest_path=dst_value,
+        ssh_key_path=key_path,
+    )
+
+    with SessionLocal() as session:
+        job = _load_job_or_404(session=session, job_id=job_id)
+
+    return templates.TemplateResponse(
+        "partials/dashboard_job_status.html",
+        {
+            "request": request,
+            "kind": "phone_reconcile",
+            "job": job,
+        },
+    )
+
+
+@web_router.get("/dashboard/job/status/{job_id}", response_class=HTMLResponse)
+def dashboard_job_status(request: Request, job_id: str):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+
+    SessionLocal = sessionmaker_for(settings.db_path)
+
+    with SessionLocal() as session:
+        job = _load_job_or_404(session=session, job_id=job_id)
+
+    return templates.TemplateResponse(
+        "partials/dashboard_job_status.html",
+        {
+            "request": request,
+            "kind": (_job_kind(job) or "ingest"),
             "job": job,
         },
     )

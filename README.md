@@ -51,6 +51,12 @@ All settings can be provided via env vars (recommended for docker/Portainer). Co
 - `GEOCODE_CACHE_CELL_M` (default: `100`; recommended `50..100`)
 - `GEOCODE_RADIUS_KM_PRIMARY` (default: `0.2`)
 - `GEOCODE_RADIUS_KM_FALLBACK` (default: `1.0`)
+- `PHONE_SYNC_SSH_USER` (example: `u_p60`)
+- `PHONE_SYNC_IP` (example: `192.168.68.110`)
+- `PHONE_SYNC_PORT` (example: `8022`)
+- `PHONE_SYNC_SOURCE_PATH` (example: `storage/dcim`)
+- `PHONE_SYNC_DEST_PATH` (example: `storage/photo_root`)
+- `PHONE_SYNC_SSH_KEY_PATH` (default: `~/.ssh/id_ed25519`)
 
 ## GitHub Actions image build
 
@@ -103,3 +109,25 @@ curl -s "http://127.0.0.1:8000/phototank/import/<job_id>" | cat
 
 Imported files are moved into `PHOTO_ROOT` and indexed + derivatives are generated.
 Files that fail import are moved to `FAILED_ROOT` (default: `./failed`).
+
+## Phone sync (JSON API)
+
+Start a phone sync job:
+
+```bash
+curl -s -X POST "http://127.0.0.1:8000/phototank/jobs/phone-sync/start" \
+	-H "content-type: application/json" \
+	-d '{
+		"ip": "192.168.68.110",
+		"ssh_user": "u_p60",
+		"ssh_port": 8022,
+		"remote_source_path": "storage/dcim",
+		"remote_dest_path": "storage/photo_root"
+	}' | cat
+```
+
+Poll any job status:
+
+```bash
+curl -s "http://127.0.0.1:8000/phototank/jobs/<job_id>" | cat
+```

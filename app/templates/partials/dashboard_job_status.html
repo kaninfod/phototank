@@ -1,15 +1,20 @@
 {% set state = job.state %}
 {% set is_active = state in ['queued', 'running'] %}
 
-{% if kind == 'import' %}
-  {% set target_id = 'importStatusWrap-' ~ job.job_id %}
-  {% set poll_url = '/phototank/dashboard/import/status/' ~ job.job_id %}
+{% if kind in ['ingest', 'import'] %}
+  {% set target_id = 'ingestStatusWrap-' ~ job.job_id %}
   {% set title = 'Ingest job' %}
+{% elif kind == 'phone_sync' %}
+  {% set target_id = 'phoneSyncStatusWrap-' ~ job.job_id %}
+  {% set title = 'Phone sync job' %}
+{% elif kind == 'phone_reconcile' %}
+  {% set target_id = 'phoneReconcileStatusWrap-' ~ job.job_id %}
+  {% set title = 'Phone reconcile job' %}
 {% else %}
   {% set target_id = 'validateStatusWrap-' ~ job.job_id %}
-  {% set poll_url = '/phototank/dashboard/validate/status/' ~ job.job_id %}
   {% set title = 'Validate job' %}
 {% endif %}
+{% set poll_url = '/phototank/dashboard/job/status/' ~ job.job_id %}
 
 <div
   id="{{ target_id }}"

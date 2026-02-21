@@ -2,8 +2,6 @@
 
 {% block content %}
   <div class="container-fluid py-3 overflow-auto" style="max-height: calc(100vh - 140px);">
-                            href="/phototank/?jump={{ y }}-01-01"
-
     <div class="row g-3">
       <div class="col-12 col-lg-6">
         <div class="card">
@@ -52,15 +50,10 @@
       </div>
 
       <div class="col-12 col-lg-6">
-        <div class="card">
+        <div class="card mb-3">
           <div class="card-header">Ingest</div>
           <div class="card-body">
-            <form
-              class="row g-2 align-items-end"
-              hx-post="/phototank/dashboard/import/start"
-              hx-target="#importActiveJobs"
-              hx-swap="afterbegin"
-            >
+            <form class="row g-2 align-items-end" hx-post="/phototank/dashboard/import/start" hx-target="#jobsRunning" hx-swap="afterbegin">
               <div class="col-auto">
                 <label class="form-label" for="ingestMode">Mode</label>
                 <select class="form-select" id="ingestMode" name="ingest_mode">
@@ -72,46 +65,13 @@
                 <button type="submit" class="btn btn-primary">Start ingest</button>
               </div>
             </form>
-
-            <div class="mt-3">
-              <div class="text-muted small mb-2">Running</div>
-              <div id="importActiveJobs" class="d-flex flex-column gap-2">
-                {% if import_running_jobs and import_running_jobs|length > 0 %}
-                  {% for job in import_running_jobs %}
-                    {% with kind='import', job=job %}
-                      {% include "partials/dashboard_job_status.html" %}
-                    {% endwith %}
-                  {% endfor %}
-                {% else %}
-                  <div class="text-muted">No running ingest jobs.</div>
-                {% endif %}
-              </div>
-
-              <div class="text-muted small mb-2 mt-3">Recent</div>
-              <div id="importRecentJobs" class="d-flex flex-column gap-2">
-                {% if import_recent_jobs and import_recent_jobs|length > 0 %}
-                  {% for job in import_recent_jobs %}
-                    {% with kind='import', job=job %}
-                      {% include "partials/dashboard_job_status.html" %}
-                    {% endwith %}
-                  {% endfor %}
-                {% else %}
-                  <div class="text-muted">No recent ingest jobs.</div>
-                {% endif %}
-              </div>
-            </div>
           </div>
         </div>
 
-        <div class="card mt-3">
+        <div class="card mb-3">
           <div class="card-header">Validate</div>
           <div class="card-body">
-            <form
-              class="row g-2 align-items-end"
-              hx-post="/phototank/dashboard/validate/start"
-              hx-target="#validateActiveJobs"
-              hx-swap="afterbegin"
-            >
+            <form class="row g-2 align-items-end" hx-post="/phototank/dashboard/validate/start" hx-target="#jobsRunning" hx-swap="afterbegin">
               <div class="col-auto">
                 <label class="form-label" for="validateYear">Year (optional)</label>
                 <input class="form-control" id="validateYear" name="year" inputmode="numeric" placeholder="e.g. 2019" />
@@ -120,33 +80,93 @@
                 <button type="submit" class="btn btn-primary">Start validate</button>
               </div>
             </form>
+          </div>
+        </div>
 
-            <div class="mt-3">
-              <div class="text-muted small mb-2">Running</div>
-              <div id="validateActiveJobs" class="d-flex flex-column gap-2">
-                {% if validate_running_jobs and validate_running_jobs|length > 0 %}
-                  {% for job in validate_running_jobs %}
-                    {% with kind='validate', job=job %}
-                      {% include "partials/dashboard_job_status.html" %}
-                    {% endwith %}
-                  {% endfor %}
-                {% else %}
-                  <div class="text-muted">No running validate jobs.</div>
-                {% endif %}
+        <div class="card">
+          <div class="card-header">Phone sync</div>
+          <div class="card-body">
+            <form class="row g-2 align-items-end" hx-post="/phototank/dashboard/phone-sync/start" hx-target="#jobsRunning" hx-swap="afterbegin">
+              <div class="col-12 col-md-6">
+                <label class="form-label" for="phoneSyncUser">SSH user</label>
+                <input class="form-control" id="phoneSyncUser" name="ssh_user" value="{{ phone_sync_default_user }}" required />
               </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label" for="phoneSyncIp">Phone IP</label>
+                <input class="form-control" id="phoneSyncIp" name="ip" value="{{ phone_sync_default_ip }}" required />
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="phoneSyncPort">Port</label>
+                <input class="form-control" id="phoneSyncPort" name="ssh_port" inputmode="numeric" value="{{ phone_sync_default_port }}" required />
+              </div>
+              <div class="col-12 col-md-8">
+                <label class="form-label" for="phoneSyncSource">Remote source path</label>
+                <input class="form-control" id="phoneSyncSource" name="remote_source_path" value="{{ phone_sync_default_source }}" required />
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="phoneSyncDest">Remote destination path</label>
+                <input class="form-control" id="phoneSyncDest" name="remote_dest_path" value="{{ phone_sync_default_dest }}" required />
+              </div>
+              <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Start phone sync</button>
+              </div>
+            </form>
 
-              <div class="text-muted small mb-2 mt-3">Recent</div>
-              <div id="validateRecentJobs" class="d-flex flex-column gap-2">
-                {% if validate_recent_jobs and validate_recent_jobs|length > 0 %}
-                  {% for job in validate_recent_jobs %}
-                    {% with kind='validate', job=job %}
-                      {% include "partials/dashboard_job_status.html" %}
-                    {% endwith %}
-                  {% endfor %}
-                {% else %}
-                  <div class="text-muted">No recent validate jobs.</div>
-                {% endif %}
+            <hr class="my-3" />
+
+            <form class="row g-2 align-items-end" hx-post="/phototank/dashboard/phone-reconcile/start" hx-target="#jobsRunning" hx-swap="afterbegin">
+              <div class="col-12 col-md-6">
+                <label class="form-label" for="phoneReconcileUser">SSH user</label>
+                <input class="form-control" id="phoneReconcileUser" name="ssh_user" value="{{ phone_sync_default_user }}" required />
               </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label" for="phoneReconcileIp">Phone IP</label>
+                <input class="form-control" id="phoneReconcileIp" name="ip" value="{{ phone_sync_default_ip }}" required />
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="phoneReconcilePort">Port</label>
+                <input class="form-control" id="phoneReconcilePort" name="ssh_port" inputmode="numeric" value="{{ phone_sync_default_port }}" required />
+              </div>
+              <div class="col-12 col-md-8">
+                <label class="form-label" for="phoneReconcileDest">Remote destination path</label>
+                <input class="form-control" id="phoneReconcileDest" name="remote_dest_path" value="{{ phone_sync_default_dest }}" required />
+              </div>
+              <div class="col-auto">
+                <button type="submit" class="btn btn-outline-primary">Reconcile mids to phone</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">Jobs</div>
+          <div class="card-body">
+            <div class="text-muted small mb-2">Running</div>
+            <div id="jobsRunning" class="d-flex flex-column gap-2">
+              {% if running_jobs and running_jobs|length > 0 %}
+                {% for kind, job in running_jobs %}
+                  {% with kind=kind, job=job %}
+                    {% include "partials/dashboard_job_status.html" %}
+                  {% endwith %}
+                {% endfor %}
+              {% else %}
+                <div class="text-muted">No running jobs.</div>
+              {% endif %}
+            </div>
+
+            <div class="text-muted small mb-2 mt-3">Recent</div>
+            <div id="jobsRecent" class="d-flex flex-column gap-2">
+              {% if recent_jobs and recent_jobs|length > 0 %}
+                {% for kind, job in recent_jobs %}
+                  {% with kind=kind, job=job %}
+                    {% include "partials/dashboard_job_status.html" %}
+                  {% endwith %}
+                {% endfor %}
+              {% else %}
+                <div class="text-muted">No recent jobs.</div>
+              {% endif %}
             </div>
           </div>
         </div>
