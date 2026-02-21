@@ -13,7 +13,7 @@
               <div class="form-check position-absolute top-0 start-0 m-2 thumb-check">
                 <input class="form-check-input select-photo" type="checkbox" data-guid="{{ it.guid }}" aria-label="Select photo">
               </div>
-              <a href="/phototank/photo/{{ it.guid }}?jump={{ jump_date }}{% if rating is not none %}&rating={{ rating }}{% endif %}{% if tag_id is not none %}&tag={{ tag_id }}{% endif %}&from={{ current|urlencode }}" class="stretched-link" aria-label="Open photo"></a>
+              <a href="/phototank/photo/{{ it.guid }}?jump={{ jump_date }}{% if rating is not none %}&rating={{ rating }}{% endif %}{% if tag_id is not none %}&tag={{ tag_id }}{% endif %}{% if country %}&country={{ country|urlencode }}{% endif %}{% if city %}&city={{ city|urlencode }}{% endif %}&from={{ current|urlencode }}" class="stretched-link" aria-label="Open photo"></a>
             </div>
             <div class="card-body p-2">
               <div class="small text-muted text-truncate">{{ it.date|dt_min }}</div>

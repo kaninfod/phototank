@@ -45,6 +45,42 @@
       </select>
     </div>
 
+    <div class="d-flex align-items-center gap-1">
+      <label class="text-light small mb-0" for="country">Country</label>
+      <input
+        class="form-control form-control-sm"
+        id="country"
+        name="country"
+        list="countryOptions"
+        value="{{ country or '' }}"
+        placeholder="All"
+        style="width: 10rem;"
+      >
+      <datalist id="countryOptions">
+        {% for c in geo_countries %}
+          <option value="{{ c }}"></option>
+        {% endfor %}
+      </datalist>
+    </div>
+
+    <div class="d-flex align-items-center gap-1">
+      <label class="text-light small mb-0" for="city">City</label>
+      <input
+        class="form-control form-control-sm"
+        id="city"
+        name="city"
+        list="cityOptions"
+        value="{{ city or '' }}"
+        placeholder="All"
+        style="width: 11rem;"
+      >
+      <datalist id="cityOptions">
+        {% for c in geo_cities %}
+          <option value="{{ c }}"></option>
+        {% endfor %}
+      </datalist>
+    </div>
+
     <button class="btn btn-primary btn-sm" type="submit">Go</button>
   </form>
 

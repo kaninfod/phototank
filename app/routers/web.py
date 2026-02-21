@@ -133,8 +133,10 @@ def _extract_filter_context(
     start: str | None,
     rating: str | None,
     tag: str | None,
-) -> tuple[str, int | None, int | None]:
-    """Return (jump_date_for_url, rating_int, tag_id).
+    country: str | None,
+    city: str | None,
+) -> tuple[str, int | None, int | None, str | None, str | None]:
+    """Return (jump_date_for_url, rating_int, tag_id, country, city).
 
     Preference order:
     1) explicit query params on the detail URL (jump preferred over start)
@@ -144,8 +146,16 @@ def _extract_filter_context(
     jump_raw = jump or start
     rating_raw = rating
     tag_raw: str | None = tag
+    country_raw: str | None = country
+    city_raw: str | None = city
 
-    if (jump_raw is None or jump_raw == "") or (rating_raw is None) or (tag_raw is None):
+    if (
+        (jump_raw is None or jump_raw == "")
+        or (rating_raw is None)
+        or (tag_raw is None)
+        or (country_raw is None)
+        or (city_raw is None)
+    ):
         if from_:
             try:
                 parsed = urlparse(from_)
@@ -159,6 +169,10 @@ def _extract_filter_context(
                     rating_raw = qs["rating"][0]
                 if tag_raw is None and "tag" in qs and qs["tag"]:
                     tag_raw = qs["tag"][0]
+                if country_raw is None and "country" in qs and qs["country"]:
+                    country_raw = qs["country"][0]
+                if city_raw is None and "city" in qs and qs["city"]:
+                    city_raw = qs["city"][0]
             except Exception:
                 pass
 
@@ -172,7 +186,15 @@ def _extract_filter_context(
         except Exception:
             tag_id = None
 
-    return jump_date_for_url, rating_int, tag_id
+    country_value = country_raw.strip() if country_raw else None
+    if country_value == "":
+        country_value = None
+
+    city_value = city_raw.strip() if city_raw else None
+    if city_value == "":
+        city_value = None
+
+    return jump_date_for_url, rating_int, tag_id, country_value, city_value
 
 
 @web_router.get("/", response_class=HTMLResponse)
@@ -185,6 +207,8 @@ def gallery(
     newer: str | None = Query(None, description="Keyset cursor for newer page"),
     rating: str | None = Query(None, description="Filter photos by rating (0..3)"),
     tag: str | None = Query(None, description="Filter photos by tag id"),
+    country: str | None = Query(None, description="Filter photos by geo country"),
+    city: str | None = Query(None, description="Filter photos by geo city"),
 ):
     settings = settings_or_500()
 
@@ -221,14 +245,47 @@ def gallery(
         except Exception:
             raise HTTPException(status_code=400, detail="tag must be an integer")
 
+    country_value = (country or "").strip() or None
+    city_value = (city or "").strip() or None
+    city_norm = city_value.casefold() if city_value else None
+
     with SessionLocal() as session:
         all_tags = list_tags(session)
+
+        geo_country_rows = list(
+            session.execute(
+                select(Photo.geo_country)
+                .where(Photo.geo_country.is_not(None))
+                .where(Photo.geo_country != "")
+                .distinct()
+                .order_by(Photo.geo_country.asc())
+            ).all()
+        )
+        geo_countries = [str(r[0]) for r in geo_country_rows if r and r[0]]
+
+        geo_cities_q = (
+            select(Photo.geo_city)
+            .where(Photo.geo_city.is_not(None))
+            .where(Photo.geo_city != "")
+        )
+        if country_value is not None:
+            geo_cities_q = geo_cities_q.where(Photo.geo_country == country_value)
+        geo_city_rows = list(
+            session.execute(
+                geo_cities_q.distinct().order_by(Photo.geo_city.asc())
+            ).all()
+        )
+        geo_cities = [str(r[0]) for r in geo_city_rows if r and r[0]]
 
         base = select(Photo).where(Photo.datetime_original.is_not(None))
         if rating_int is not None:
             base = base.where(Photo.rating == rating_int)
         if tag_id is not None:
             base = base.join(PhotoTag, PhotoTag.photo_guid == Photo.guid).where(PhotoTag.tag_id == tag_id)
+        if country_value is not None:
+            base = base.where(Photo.geo_country == country_value)
+        if city_norm is not None:
+            base = base.where(Photo.geo_city_norm == city_norm)
 
         rows: list[Photo]
         if direction == "initial":
@@ -327,6 +384,10 @@ def gallery(
             "limit": limit,
             "rating": rating_int,
             "tag_id": tag_id,
+            "country": country_value,
+            "city": city_value,
+            "geo_countries": geo_countries,
+            "geo_cities": geo_cities,
             "tags": all_tags,
             "has_newer": has_newer,
             "has_older": has_older,
@@ -543,16 +604,20 @@ def photo_detail(
     start: str | None = Query(None, description="Compatibility alias for jump"),
     rating: str | None = Query(None, description="Filter context: rating 0..3"),
     tag: str | None = Query(None, description="Filter context: tag id"),
+    country: str | None = Query(None, description="Filter context: geo country"),
+    city: str | None = Query(None, description="Filter context: geo city"),
 ):
     settings = settings_or_500()
     guid = normalize_guid(guid)
 
-    jump_for_url, rating_int, tag_ctx = _extract_filter_context(
+    jump_for_url, rating_int, tag_ctx, country_ctx, city_ctx = _extract_filter_context(
         from_=from_,
         jump=jump,
         start=start,
         rating=rating,
         tag=tag,
+        country=country,
+        city=city,
     )
 
     tag_id: int | None = None
@@ -563,6 +628,10 @@ def photo_detail(
             tag_id = None
     if tag_id is None:
         tag_id = tag_ctx
+
+    country_value = (country.strip() if country is not None else None) or country_ctx
+    city_value = (city.strip() if city is not None else None) or city_ctx
+    city_norm = city_value.casefold() if city_value else None
 
     SessionLocal = sessionmaker_for(settings.db_path)
 
@@ -588,6 +657,10 @@ def photo_detail(
                 base = base.where(Photo.rating == rating_int)
             if tag_id is not None:
                 base = base.join(PhotoTag, PhotoTag.photo_guid == Photo.guid).where(PhotoTag.tag_id == tag_id)
+            if country_value is not None:
+                base = base.where(Photo.geo_country == country_value)
+            if city_norm is not None:
+                base = base.where(Photo.geo_city_norm == city_norm)
 
             next_q = base.where(
                 or_(
@@ -616,6 +689,10 @@ def photo_detail(
             q["rating"] = str(rating_int)
         if tag_id is not None:
             q["tag"] = str(tag_id)
+        if country_value is not None:
+            q["country"] = country_value
+        if city_value is not None:
+            q["city"] = city_value
         if back_url:
             q["from"] = back_url
         return f"/phototank/photo/{target_guid}?{urlencode(q)}"
