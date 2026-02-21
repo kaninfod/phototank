@@ -545,6 +545,7 @@ def dashboard_validate_start(
     request: Request,
     year: str | None = Form(None),
     repair_mid_exif: bool = Form(False),
+    do_geolookup: bool = Form(True),
 ):
     settings = settings_or_500()
     ensure_dirs_and_db(settings.photo_root, settings.db_path)
@@ -570,7 +571,12 @@ def dashboard_validate_start(
             create_job(session, job_id=job_id, year=year_int, job_type="validate")
         session.commit()
 
-    _start_job_thread(run_validate_job, job_id, repair_mid_exif=bool(repair_mid_exif))
+    _start_job_thread(
+        run_validate_job,
+        job_id,
+        repair_mid_exif=bool(repair_mid_exif),
+        do_geolookup=bool(do_geolookup),
+    )
 
     with SessionLocal() as session:
         job = _load_job_or_404(session=session, job_id=job_id)

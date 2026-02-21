@@ -241,7 +241,13 @@ def _cleanup_db_and_derivs(*, session: Session, guid: str, deriv_root: Path) -> 
             pass
 
 
-def run_validate_job(job_id: str, *, repair_derivatives: bool = True, repair_mid_exif: bool = False) -> None:
+def run_validate_job(
+    job_id: str,
+    *,
+    repair_derivatives: bool = True,
+    repair_mid_exif: bool = False,
+    do_geolookup: bool = True,
+) -> None:
     settings = get_settings()
 
     logger.info("validate job starting job_id=%s", job_id)
@@ -317,13 +323,14 @@ def run_validate_job(job_id: str, *, repair_derivatives: bool = True, repair_mid
                         if deriv.mid_created:
                             mids_done += 1
 
-                    changed = enrich_photo_location(session, settings=settings, photo=photo)
-                    # Keep geocode writes in short transactions so we don't hold
-                    # SQLite write locks while doing network requests.
-                    if changed:
-                        ok = _commit_with_retry(session, label="validate-photo-geocode")
-                        if not ok:
-                            errors += 1
+                    if do_geolookup:
+                        changed = enrich_photo_location(session, settings=settings, photo=photo)
+                        # Keep geocode writes in short transactions so we don't hold
+                        # SQLite write locks while doing network requests.
+                        if changed:
+                            ok = _commit_with_retry(session, label="validate-photo-geocode")
+                            if not ok:
+                                errors += 1
                 except Exception:
                     errors += 1
                     logger.exception("validate error job_id=%s rel_path=%s", job_id, getattr(photo, "rel_path", ""))
