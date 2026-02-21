@@ -52,7 +52,7 @@ def get_thumb(guid: str):
     p = thumb_path(settings.deriv_root, guid)
     if not p.exists():
         raise HTTPException(status_code=404, detail="thumb not found")
-    return FileResponse(p)
+    return FileResponse(p, media_type="image/webp")
 
 
 @api_router.get("/mid/{guid}")
@@ -62,7 +62,7 @@ def get_mid(guid: str):
     p = mid_path(settings.deriv_root, guid)
     if not p.exists():
         raise HTTPException(status_code=404, detail="mid not found")
-    return FileResponse(p)
+    return FileResponse(p, media_type="image/webp")
 
 
 @api_router.get("/original/{guid}")

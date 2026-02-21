@@ -45,15 +45,54 @@ def _should_regen(out_path: Path, source_mtime: Optional[int]) -> bool:
     except Exception:
         return True
 
-
-def _save_webp(im: Image.Image, out_path: Path, *, quality: int) -> None:
+def _save_webp(im: Image.Image, out_path: Path, *, quality: int, exif_bytes: bytes | None = None) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # WebP prefers RGB/RGBA.
     if im.mode not in ("RGB", "RGBA"):
         im = im.convert("RGB")
 
-    im.save(out_path, format="WEBP", quality=int(quality), method=6)
+    save_kwargs = {
+        "format": "WEBP",
+        "quality": int(quality),
+        "method": 6,
+    }
+    if exif_bytes:
+        save_kwargs["exif"] = exif_bytes
+
+    im.save(out_path, **save_kwargs)
+
+
+def _extract_mid_exif_bytes(source_im: Image.Image) -> bytes | None:
+    try:
+        exif = source_im.getexif()
+    except Exception:
+        return None
+    if not exif:
+        return None
+
+    # Image pixels are already normalized with exif_transpose.
+    try:
+        exif[274] = 1  # Orientation
+    except Exception:
+        pass
+
+    try:
+        b = exif.tobytes()
+        return b or None
+    except Exception:
+        return None
+
+
+def _mid_has_exif(mpath: Path) -> bool:
+    if not mpath.exists():
+        return False
+    try:
+        with Image.open(mpath) as im:
+            exif = im.getexif()
+            return bool(exif)
+    except Exception:
+        return False
 
 
 def ensure_derivatives(
@@ -66,6 +105,7 @@ def ensure_derivatives(
     mid_max: int,
     thumb_quality: int,
     mid_quality: int,
+    repair_mid_exif: bool = False,
 ) -> DerivResult:
     tpath = thumb_path(deriv_root, guid)
     mpath = mid_path(deriv_root, guid)
@@ -73,11 +113,15 @@ def ensure_derivatives(
     need_thumb = _should_regen(tpath, source_mtime)
     need_mid = _should_regen(mpath, source_mtime)
 
+    if repair_mid_exif and not need_mid and not _mid_has_exif(mpath):
+        need_mid = True
+
     if not (need_thumb or need_mid):
         return DerivResult(thumb_created=False, mid_created=False)
 
     with Image.open(source_path) as im:
         im = ImageOps.exif_transpose(im)
+        mid_exif_bytes = _extract_mid_exif_bytes(im)
 
         thumb_created = False
         mid_created = False
@@ -91,7 +135,7 @@ def ensure_derivatives(
         if need_mid:
             mid = im.copy()
             mid.thumbnail((mid_max, mid_max), resample=Image.Resampling.LANCZOS)
-            _save_webp(mid, mpath, quality=mid_quality)
+            _save_webp(mid, mpath, quality=mid_quality, exif_bytes=mid_exif_bytes)
             mid_created = True
 
         return DerivResult(thumb_created=thumb_created, mid_created=mid_created)

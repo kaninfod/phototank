@@ -199,7 +199,7 @@ def _cleanup_db_and_derivs(*, session: Session, guid: str, deriv_root: Path) -> 
             pass
 
 
-def run_validate_job(job_id: str, *, repair_derivatives: bool = True) -> None:
+def run_validate_job(job_id: str, *, repair_derivatives: bool = True, repair_mid_exif: bool = False) -> None:
     settings = get_settings()
 
     logger.info("validate job starting job_id=%s", job_id)
@@ -268,6 +268,7 @@ def run_validate_job(job_id: str, *, repair_derivatives: bool = True) -> None:
                             mid_max=settings.mid_max,
                             thumb_quality=settings.thumb_quality,
                             mid_quality=settings.mid_quality,
+                            repair_mid_exif=repair_mid_exif,
                         )
                         if deriv.thumb_created:
                             thumbs_done += 1

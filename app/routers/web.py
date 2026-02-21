@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 from pathlib import Path
+import threading
 from urllib.parse import parse_qs, urlencode, urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, func, or_, select
@@ -61,6 +62,11 @@ def _job_kind(job: ScanJob) -> str | None:
         return "validate"
     if msg.startswith("ingest:"):
         return "import"
+
+    # Heuristic fallback for legacy/API rows where type metadata wasn't set.
+    # Validate jobs usually carry a year scope; ingest jobs do not.
+    if job.year is not None:
+        return "validate"
     return None
 
 
@@ -70,6 +76,11 @@ def _job_sort_key(job: ScanJob) -> tuple[str, str, str]:
         str(job.finished_at or ""),
         str(job.job_id or ""),
     )
+
+
+def _start_job_thread(target, /, *args, **kwargs) -> None:
+    t = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
+    t.start()
 
 
 
@@ -422,7 +433,6 @@ def dashboard(request: Request):
         jobs = list(
             session.execute(
                 select(ScanJob)
-                .where(ScanJob.message.is_not(None))
                 .order_by(ScanJob.started_at.desc(), ScanJob.job_id.desc())
                 .limit(200)
             ).scalars().all()
@@ -475,7 +485,6 @@ def dashboard(request: Request):
 @web_router.post("/dashboard/import/start", response_class=HTMLResponse)
 def dashboard_import_start(
     request: Request,
-    background_tasks: BackgroundTasks,
     ingest_mode: str | None = Form(None),
 ):
     settings = settings_or_500()
@@ -495,7 +504,7 @@ def dashboard_import_start(
             create_job(session, job_id=job_id, year=None, job_type="ingest")
         session.commit()
 
-    background_tasks.add_task(run_ingest_job, job_id, ingest_mode=mode)
+    _start_job_thread(run_ingest_job, job_id, ingest_mode=mode)
 
     with SessionLocal() as session:
         job = _load_job_or_404(session=session, job_id=job_id)
@@ -533,8 +542,8 @@ def dashboard_import_status(request: Request, job_id: str):
 @web_router.post("/dashboard/validate/start", response_class=HTMLResponse)
 def dashboard_validate_start(
     request: Request,
-    background_tasks: BackgroundTasks,
     year: str | None = Form(None),
+    repair_mid_exif: bool = Form(False),
 ):
     settings = settings_or_500()
     ensure_dirs_and_db(settings.photo_root, settings.db_path)
@@ -560,7 +569,7 @@ def dashboard_validate_start(
             create_job(session, job_id=job_id, year=year_int, job_type="validate")
         session.commit()
 
-    background_tasks.add_task(run_validate_job, job_id)
+    _start_job_thread(run_validate_job, job_id, repair_mid_exif=bool(repair_mid_exif))
 
     with SessionLocal() as session:
         job = _load_job_or_404(session=session, job_id=job_id)
