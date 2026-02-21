@@ -23,6 +23,31 @@
         {% endif %}
       </dd>
 
+      <dt class="col-4">Geo</dt>
+      <dd class="col-8">
+        {% if photo.geo_display_name %}
+          {{ photo.geo_display_name }}
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </dd>
+
+      <dt class="col-4">Geo Lookup</dt>
+      <dd class="col-8">
+        {% if photo.geo_lookup_status == "ok" %}
+          <span class="text-success" title="Lookup ok">●</span> ok
+        {% elif photo.geo_lookup_status == "miss" %}
+          <span class="text-secondary" title="No result from provider">●</span> miss
+        {% elif photo.geo_lookup_status == "error" %}
+          <span class="text-danger" title="Lookup failed">●</span> error
+          {% if photo.geo_lookup_error %}
+            <span class="text-muted">({{ photo.geo_lookup_error }})</span>
+          {% endif %}
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </dd>
+
       <dt class="col-4">Tags</dt>
       <dd class="col-8" id="photoTags" data-photo-guid="{{ photo.guid }}">
         {% if photo_tags and photo_tags|length > 0 %}

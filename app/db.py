@@ -165,6 +165,9 @@ def fetch_photo(session: Session, guid: str) -> Optional[dict[str, Any]]:
         "rating": row.rating,
         "indexed_at": row.indexed_at,
         "exif_error": row.exif_error,
+        "geo_display_name": row.geo_display_name,
+        "geo_lookup_status": row.geo_lookup_status,
+        "geo_lookup_error": row.geo_lookup_error,
     }
 
 
