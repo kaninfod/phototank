@@ -49,6 +49,8 @@ RUN apt-get update \
     libtiff6 \
     libwebp7 \
     libheif1 \
+    openssh-client \
+    rsync \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /phototank
