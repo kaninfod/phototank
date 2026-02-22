@@ -44,13 +44,11 @@ def setup_logging(settings: Settings) -> None:
         datefmt="%Y-%m-%dT%H:%M:%S%z",
     )
 
-    # Console handler
     console = logging.StreamHandler(stream=sys.stdout)
     console.setLevel(level)
     console.setFormatter(fmt)
     root.addHandler(console)
 
-    # Optional file handler
     if settings.log_file is not None:
         log_path = Path(settings.log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,10 +62,8 @@ def setup_logging(settings: Settings) -> None:
         fh.setFormatter(fmt)
         root.addHandler(fh)
 
-    # Optional syslog handler
     syslog_handler: logging.Handler | None = None
     if settings.log_syslog_path is not None:
-        # Unix domain socket syslog (common on macOS/Linux)
         syslog_handler = logging.handlers.SysLogHandler(address=str(settings.log_syslog_path))
     elif settings.log_syslog_host:
         proto = (settings.log_syslog_protocol or "udp").strip().lower()
@@ -79,11 +75,9 @@ def setup_logging(settings: Settings) -> None:
 
     if syslog_handler is not None:
         syslog_handler.setLevel(level)
-        # Syslog already adds timestamps/hosts; keep it short.
         syslog_handler.setFormatter(logging.Formatter("phototank %(levelname)s %(name)s: %(message)s"))
         root.addHandler(syslog_handler)
 
-    # Make uvicorn loggers follow the same level.
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         logging.getLogger(name).setLevel(level)
 

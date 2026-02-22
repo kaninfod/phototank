@@ -11,10 +11,10 @@ from starlette.requests import Request
 import json
 import logging
 
-from .config import get_settings
-from .db import engine_for, init_db
-from .logging_setup import setup_logging
-from .routes import router
+from .core.config import get_settings
+from .core.db import engine_for, init_db
+from .core.logging_setup import setup_logging
+from .core.routes import router
 
 
 def create_app() -> FastAPI:

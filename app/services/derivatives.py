@@ -11,7 +11,6 @@ try:
 
     register_heif_opener()
 except Exception:
-    # HEIF/HEIC support is optional; generation will fail gracefully if Pillow can't open.
     pass
 
 
@@ -45,10 +44,10 @@ def _should_regen(out_path: Path, source_mtime: Optional[int]) -> bool:
     except Exception:
         return True
 
+
 def _save_webp(im: Image.Image, out_path: Path, *, quality: int, exif_bytes: bytes | None = None) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # WebP prefers RGB/RGBA.
     if im.mode not in ("RGB", "RGBA"):
         im = im.convert("RGB")
 
@@ -71,9 +70,8 @@ def _extract_mid_exif_bytes(source_im: Image.Image) -> bytes | None:
     if not exif:
         return None
 
-    # Image pixels are already normalized with exif_transpose.
     try:
-        exif[274] = 1  # Orientation
+        exif[274] = 1
     except Exception:
         pass
 

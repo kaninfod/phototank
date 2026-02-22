@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine
 
 from .models import Base, Photo, PhotoTag, ScanJob, Tag
-from .scanner import PhotoRecord
+from ..services.scanner import PhotoRecord
 
 
 _ENGINES: dict[str, Engine] = {}

@@ -14,8 +14,8 @@ from urllib.request import urlopen
 
 from sqlalchemy.orm import Session
 
-from .config import Settings
-from .models import Photo, ReverseGeocodeCache
+from ..core.config import Settings
+from ..core.models import Photo, ReverseGeocodeCache
 
 try:
     import certifi  # type: ignore
@@ -157,7 +157,6 @@ def _geonames_lookup(
             with urlopen(http_url, timeout=timeout) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
 
-    # GeoNames may return an error payload even with HTTP 200.
     status = payload.get("status")
     if isinstance(status, dict) and status.get("message"):
         raise RuntimeError(f"GeoNames error: {status.get('message')}")

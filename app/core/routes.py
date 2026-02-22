@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from .routers.api import api_router
-from .routers.web import web_router
+from ..routers.api import api_router
+from ..routers.web import web_router
 
 router = APIRouter()
 router.include_router(web_router)

@@ -21,7 +21,7 @@
   class="border rounded p-2"
   {% if is_active %}
     hx-get="{{ poll_url }}"
-    hx-trigger="load, every 2s"
+    hx-trigger="load, every 8s"
     hx-swap="outerHTML"
   {% endif %}
 >

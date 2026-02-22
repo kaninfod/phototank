@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from starlette.responses import FileResponse
 
-from ..db import (
+from ..core.db import (
     apply_tag_to_photos,
     create_job,
     create_or_get_tag,
@@ -19,11 +19,11 @@ from ..db import (
     sessionmaker_for,
     tags_for_photo,
 )
-from ..derivatives import mid_path, thumb_path
+from ..services.derivatives import mid_path, thumb_path
 from ..jobs import new_job_id, run_phone_reconcile_job, run_phone_sync_job
-from ..models import Photo
-from ..router_helpers import ensure_deriv_root, ensure_dirs_and_db, settings_or_500
-from ..util import normalize_guid, resolve_relpath_under
+from ..core.models import Photo
+from ..core.router_helpers import ensure_deriv_root, ensure_dirs_and_db, settings_or_500
+from ..core.util import normalize_guid, resolve_relpath_under
 
 
 class DeleteRequest(BaseModel):
