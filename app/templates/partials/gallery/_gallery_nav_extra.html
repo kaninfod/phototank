@@ -1,4 +1,8 @@
-<div class="d-flex align-items-center gap-2">
+<div 
+  class="d-flex align-items-center gap-2"
+  data-controller="navbar"
+  data-action="appstate:updated@window->navbar#refreshUI"
+  >
   <button
     class="btn btn-outline-light btn-sm d-sm-none"
     type="button"
@@ -9,21 +13,21 @@
     aria-label="Search / filters"
     title="Search / filters"
   >
-    &#128269;
+    
   </button>
 
   <div class="collapse phototank-navfilters" id="navFilters">
   <form class="d-flex align-items-center gap-2 flex-wrap" method="get" action="/phototank/">
+    
+    <!-- Date field -->
     <div class="d-flex align-items-center gap-1">
       <label class="text-light small mb-0" for="jump">Jump</label>
       <input class="form-control form-control-sm" type="date" id="jump" name="jump" value="{{ jump_date }}">
     </div>
 
-    <div class="d-flex align-items-center gap-1">
-      <label class="text-light small mb-0" for="limit">Per</label>
-      <input class="form-control form-control-sm" type="number" id="limit" name="limit" min="1" max="200" value="{{ limit }}" style="width: 6.5rem;">
-    </div>
 
+
+    <!-- rating field -->
     <div class="d-flex align-items-center gap-1">
       <label class="text-light small mb-0" for="rating">Rating</label>
       <select class="form-select form-select-sm" id="rating" name="rating" style="width: 5.5rem;">
@@ -35,6 +39,7 @@
       </select>
     </div>
 
+    <!-- tag field -->
     <div class="d-flex align-items-center gap-1">
       <label class="text-light small mb-0" for="tag">Tag</label>
       <select class="form-select form-select-sm" id="tag" name="tag" style="width: 10rem;">
@@ -45,6 +50,7 @@
       </select>
     </div>
 
+    <!-- country field -->
     <div class="d-flex align-items-center gap-1">
       <label class="text-light small mb-0" for="country">Country</label>
       <input
@@ -63,6 +69,7 @@
       </datalist>
     </div>
 
+    <!-- city field -->
     <div class="d-flex align-items-center gap-1">
       <label class="text-light small mb-0" for="city">City</label>
       <input
@@ -86,7 +93,12 @@
 
   </div>
 
-  <button class="btn btn-outline-light btn-sm d-none d-sm-inline-flex" type="button" id="selectedToggle" data-bs-toggle="offcanvas" data-bs-target="#selectedOffcanvas" aria-controls="selectedOffcanvas">
-    Selected (<span id="navSelectedCount">0</span>)
+  <button 
+    class="btn btn-outline-light btn-sm d-none d-sm-inline-flex flex-nowrap gap-1" 
+    type="button" 
+    id="selectedToggle" 
+    aria-controls="selectedOffcanvas"
+    data-action="click->navbar#handleToggleOffcanvas">
+    Selected<span data-navbar-target="selectedCount" id="navSelectedCount">0</span>
   </button>
 </div>

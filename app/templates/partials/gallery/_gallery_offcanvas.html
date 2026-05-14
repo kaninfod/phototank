@@ -1,0 +1,69 @@
+<div 
+  class="offcanvas offcanvas-end" 
+  tabindex="-1" 
+  id="selectedOffcanvas" 
+  aria-labelledby="selectedOffcanvasLabel"
+  data-gallery-target="offcanvas"
+  data-action="toggle-offcanvas@window->gallery#toggleOffcanvas">
+  <div class="offcanvas-header">
+    <h5 data-gallery-target="offcanvasSelectedCount" class="offcanvas-title" id="selectedOffcanvasLabel">Selected (<span id="offcanvasCount">0</span>)</h5>
+    <button data-action="click->gallery#toggleOffcanvas" type="button" class="btn-close" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body d-flex flex-column gap-2">
+    <div class="d-flex gap-2">
+      <button data-action="click->gallery#clearSelected" class="btn btn-outline-secondary btn-sm" type="button" id="offcanvasClear">Clear</button>
+      <button data-action="click->gallery#deleteSelected" class="btn btn-danger btn-sm" type="button" id="offcanvasDelete">Delete Photos</button>
+    </div>
+
+    <div class="border-top pt-2">
+      <div class="fw-semibold">Tag selected</div>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <select data-gallery-target="selectedTag" class="form-select form-select-sm" id="offcanvasTagSelect" style="max-width: 14rem;">
+          <option value="" selected disabled>Select a tag…</option>
+          {% for t in tags %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        <button data-action="click->gallery#addTagsToSelected" class="btn btn-primary btn-sm" type="button" id="offcanvasTagApply">Apply</button>
+        <button data-action="click->gallery#removeTagsFromSelected" class="btn btn-outline-secondary btn-sm" type="button" id="offcanvasTagRemove">Remove</button>
+      </div>
+
+      <div class="mt-2">
+        <div class="small text-muted mb-1">Create new tag</div>
+        <div data-gallery-target="newTagForm" class="d-flex gap-2 flex-column">
+          <input class="form-control form-control-sm" type="text" id="newTagName" placeholder="Tag name (e.g. Xmas 2024)">
+          <input class="form-control form-control-sm" type="text" id="newTagDesc" placeholder="Description (optional)">
+          <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" id="newTagColor" style="max-width: 14rem;">
+              <option value="primary" selected>primary</option>
+              <option value="secondary">secondary</option>
+              <option value="success">success</option>
+              <option value="danger">danger</option>
+              <option value="warning">warning</option>
+              <option value="info">info</option>
+              <option value="dark">dark</option>
+            </select>
+            <button data-action="click->gallery#addNewTag" class="btn btn-outline-primary btn-sm" type="button" id="createAndApplyTag">Create & apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div data-gallery-target="thumbGrid" id="selectedGrid" class="d-grid" style="grid-template-columns: repeat(4, 1fr); gap: .5rem; overflow:auto;">
+      
+      <div class="position-relative d-none" data-gallery-target="thumbTemplate">
+        <a href="/phototank/photo/8be710ec3da14de695da60be79ae68da?from=%2Fphototank%2F" class="d-block">
+          <img src="/phototank/thumb/8be710ec3da14de695da60be79ae68da" loading="lazy" class="mini-thumb rounded border" alt="8be710ec3da14de695da60be79ae68da">
+        </a>
+        <button 
+          type="button" 
+          class="btn btn-sm btn-dark position-absolute top-0 end-0 m-1" 
+          aria-label="Remove from selection"
+          data-action="click->gallery#togglePhotoSelection">
+          ×
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>

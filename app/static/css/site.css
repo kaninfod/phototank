@@ -1,130 +1,188 @@
-.thumb-img {
-	width: 100%;
-	aspect-ratio: 1 / 1;
-	object-fit: contain;
-	background-color: var(--bs-secondary-bg);
-	display: block;
+/* ============================================================
+   1. LAYOUT SHELL (SCROLL FIXES)
+   Ensures the header/footer stay put and double scrolls die.
+   ============================================================ */
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Prevent body-level scrolling */
 }
 
-.thumb-check {
-	z-index: 2;
+body {
+    display: flex;
+    flex-direction: column;
 }
 
-.rating-badge {
-	z-index: 3 !important;
-	cursor: pointer;
-	border: 0;
-	pointer-events: auto;
+/* The only scrollable area in the app */
+main {
+    flex: 1; 
+    overflow-y: auto;
+    overflow-x: hidden; /* Crucial: Kills horizontal scroll */
+    -webkit-overflow-scrolling: touch;
+    background-color: #111;
+}
+
+/* Neutralizes the negative margin of the grid so it doesn't poke out */
+.container-fluid {
+    overflow: hidden;
+}
+
+/* ============================================================
+   2. THE RUTHLESS FLEX GRID
+   ============================================================ */
+
+.grid {
+    display: flex;
+    flex-wrap: wrap;
+    margin: -4px; /* Gutters */
+}
+
+/* Base container: Default 6 columns */
+.grid-item {
+    flex: 0 0 10%; /* Using 16.6% instead of .666% to prevent rounding overflow */
+    padding: 4px;
+    box-sizing: border-box;
+}
+
+/* Landscape Item: Spans 2 columns */
+.grid-item--wide {
+    flex: 0 0 20% !important;
+}
+
+/* PORTRAIT (Standard): Force a 2:3 ratio */
+.grid-item .thumb-img {
+    width: 100% !important;
+    aspect-ratio: 2 / 3 !important; 
+    object-fit: cover !important; 
+    display: block;
+    border-radius: 4px;
+    background-color: #222;
+}
+
+/* LANDSCAPE (Wide): Math adjusted for 6-column gutter gap */
+.grid-item--wide .thumb-img {
+    aspect-ratio: 325 / 237 !important; 
+}
+
+/* ============================================================
+   3. PHOTO TILE & INTERACTIVE UI
+   ============================================================ */
+
+.photo-tile {
+    position: relative;
+    display: block;
+    transition: transform 0.2s ease;
+    background: #222;
+}
+
+.photo-tile:hover {
+    transform: translateY(-2px);
+    z-index: 10;
 }
 
 .photo-tile.kb-active {
-	outline: 2px solid var(--bs-primary);
-	outline-offset: -2px;
+    outline: 2px solid var(--bs-primary);
+    outline-offset: -2px;
 }
 
-/* Bootstrap's .stretched-link uses a full-size ::after overlay; keep it under interactive controls. */
-.position-relative .stretched-link::after {
-	z-index: 1;
+.rating-badge {
+    z-index: 6 !important;
+    cursor: pointer;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
 }
+
+.thumb-check {
+    z-index: 5;
+}
+
+.thumb-check .form-check-input {
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    cursor: pointer;
+}
+
+.position-relative .stretched-link::after {
+    z-index: 1;
+}
+
+/* ============================================================
+   4. DETAIL & MINI THUMBS
+   ============================================================ */
 
 .mini-thumb {
-	width: 64px;
-	height: 64px;
-	object-fit: contain;
-	background-color: var(--bs-dark);
-	display: block;
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    background-color: var(--bs-dark);
+    display: block;
 }
 
 .detail-img {
-	width: 100%;
-	max-height: 80vh;
-	object-fit: contain;
-	background-color: var(--bs-dark);
-	display: block;
+    width: 100%;
+    max-height: 80vh;
+    object-fit: contain;
+    background-color: var(--bs-dark);
+    display: block;
+}
+.fs-small {
+    font-size: 0.75rem !important;
+    color: #ffa200
+}
+/* ============================================================
+   5. RESPONSIVE BREAKPOINTS
+   ============================================================ */
+
+/* TABLET / MID-SIZE (4 Columns) */
+@media (max-width: 1100px) and (min-width: 769px) {
+    .grid-item { 
+        flex: 0 0 25% !important;
+    }
+    .grid-item--wide { 
+        flex: 0 0 50% !important; 
+    }
+    
+    /* Re-calculating the L-ratio for 4 columns */
+    .grid-item--wide .thumb-img {
+        aspect-ratio: 4 / 2.95 !important; 
+    }
 }
 
-/* ---------------- Mobile tweaks (gallery grid) ---------------- */
+/* MOBILE (2 Columns) */
+@media (max-width: 768px) {
+    .grid-item { 
+        flex: 0 0 50% !important; 
+    }
+    .grid-item--wide { 
+        flex: 0 0 100% !important; 
+    }
+    
+    .grid-item--wide .thumb-img {
+        aspect-ratio: 3 / 2 !important; 
+    }
 
+    /* Hide specific UI elements on mobile */
+    .phototank-dashboard-link,
+    #selectedToggle,
+    #selectedOffcanvas,
+    .thumb-check {
+        display: none !important;
+    }
+
+    /* Keep footer stuck to bottom on mobile Safari */
+    footer {
+        position: sticky;
+        bottom: 0;
+        z-index: 1030;
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
+
+/* Filter Collapse fix */
 @media (min-width: 576px) {
-	/* Keep gallery filters always visible on desktop, even though we use a collapse wrapper for mobile. */
-	#navFilters.collapse:not(.show) {
-		display: block !important;
-		height: auto !important;
-		visibility: visible !important;
-	}
-	#navFilters.collapsing {
-		height: auto !important;
-	}
-}
-
-@media (max-width: 575.98px) {
-	/* Hide dashboard + selection UX on mobile (CSS-only disable). */
-	.phototank-dashboard-link {
-		display: none !important;
-	}
-	#selectedToggle,
-	#selectedOffcanvas {
-		display: none !important;
-	}
-
-	/* Masonry-style grid on mobile: avoid forced square tiles (no crop, no black bars). */
-	.phototank-gallery-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 4px;
-		/* Only enable masonry row spanning once JS has set grid-row-end spans. */
-	}
-	.phototank-gallery-grid.phototank-masonry {
-		grid-auto-rows: 8px;
-		grid-auto-flow: dense;
-		align-items: start;
-	}
-	.phototank-gallery-grid > .col {
-		display: block;
-		width: auto;
-		padding-left: 0;
-		padding-right: 0;
-		margin: 0;
-	}
-	.phototank-gallery-grid > .col.phototank-wide {
-		grid-column: 1 / -1;
-	}
-	.phototank-gallery-grid .photo-tile {
-		height: auto !important;
-	}
-	.phototank-gallery-grid .thumb-img {
-		aspect-ratio: auto;
-		height: auto;
-		background-color: transparent;
-	}
-
-	/* Tighten the photo grid: no gutters, no card chrome. */
-	.row.row-cols-2.row-cols-sm-3.row-cols-md-4.row-cols-lg-6.g-2 {
-		--bs-gutter-x: 0;
-		--bs-gutter-y: 0;
-	}
-	.photo-tile {
-		border: 0;
-		border-radius: 0;
-	}
-	.photo-tile .card-body {
-		display: none;
-	}
-	.photo-tile .thumb-check {
-		display: none;
-	}
-
-	/* Make footer pager float above typical mobile bottom browser chrome. */
-	footer {
-		position: fixed;
-		left: 0;
-		right: 0;
-		z-index: 1030;
-		bottom: calc(env(safe-area-inset-bottom) + 4px);
-	}
-
-	/* Ensure scroll area can reach below the fixed pager. */
-	main {
-		padding-bottom: calc(env(safe-area-inset-bottom) + 100px);
-	}
+    #navFilters.collapse:not(.show) {
+        display: block !important;
+        height: auto !important;
+        visibility: visible !important;
+    }
 }

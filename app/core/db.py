@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime, timedelta
 from pathlib import Path
 import threading
 from typing import Any, Optional
+import logging
 
-from sqlalchemy import Engine, event, func, select, text
+from sqlalchemy import Engine, and_, event, func, or_, select, text
 from sqlalchemy import delete
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,6 +16,7 @@ from sqlalchemy import create_engine
 from .models import Base, Photo, PhotoTag, ScanJob, Tag
 from ..services.scanner import PhotoRecord
 
+logger = logging.getLogger(__name__)
 
 _ENGINES: dict[str, Engine] = {}
 _SESSIONMAKERS: dict[str, sessionmaker] = {}
@@ -200,16 +203,23 @@ def list_tags(session: Session) -> list[Tag]:
 def create_or_get_tag(
     session: Session,
     *,
-    name: str,
-    description: str | None,
-    color: str,
+    tag_id: int | None = None,
+    name: str = "",
+    description: str | None = None,
+    color: str = "primary",
 ) -> Tag:
-    display, norm = normalize_tag_name(name)
-    color = (color or "primary").strip().lower()
+    
+    if tag_id is not None:
+        existing = session.get(Tag, int(tag_id))
+        if existing is not None:
+            return existing
 
+        
+    color = (color or "primary").strip().lower()
     if color not in {"primary", "secondary", "success", "danger", "warning", "info", "dark"}:
         raise ValueError("invalid tag color")
 
+    display, norm = normalize_tag_name(name)
     existing = session.execute(select(Tag).where(Tag.name_norm == norm)).scalar_one_or_none()
     if existing is not None:
         return existing
@@ -262,3 +272,69 @@ def remove_tag_from_photos(session: Session, *, tag_id: int, guids: list[str]) -
         raise
     session.commit()
     return n
+
+
+def list_countries(session: Session) -> list[str]:
+    q = select(Photo.geo_country).where(Photo.geo_country.isnot(None)).distinct().order_by(Photo.geo_country.asc())
+    return [row[0] for row in session.execute(q).all()]
+
+def list_cities(session: Session, country: str | None = None) -> list[str]:
+    q = select(Photo.geo_city).where(Photo.geo_city.isnot(None))
+    if country is not None:
+        q = q.where(Photo.geo_country == country)
+    q = q.distinct().order_by(Photo.geo_city.asc())
+    return [row[0] for row in session.execute(q).all()]
+
+def photos(session: Session, 
+           start_date: str | None = None, 
+           guid: str | None = None,
+           direction: str | None = None, 
+           limit: int | None = None,
+           rating_int: int | None = None, 
+           tag_id: int | None = None, 
+           country_value: str | None = None, 
+           city_value: str | None = None) -> list[Photo]:
+    
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+
+    q = select(Photo).where(Photo.datetime_original.isnot(None))
+    if rating_int is not None:
+        q = q.where(Photo.rating == rating_int)
+    if tag_id:
+        q = q.join(PhotoTag, PhotoTag.photo_guid == Photo.guid).where(PhotoTag.tag_id == tag_id)
+    if country_value is not None:
+        q = q.where(Photo.geo_country == country_value)
+    if city_value is not None:
+        q = q.where(Photo.geo_city == city_value)
+    if direction == "initial" and start_date is not None:
+        _start_date: datetime = datetime.strptime(f"{start_date}", "%Y-%m-%dT%H:%M:%S")
+        _start_date =  _start_date + timedelta(days=1)
+        start_date = datetime.strftime(_start_date, "%Y-%m-%dT%H:%M:%S")
+        logger.debug(f"Filtering for photos with datetime_original <= {start_date} since no direction specified")
+        q = q.where(Photo.datetime_original <= start_date)
+        q = q.order_by(Photo.datetime_original.desc(), Photo.guid.desc())
+    if direction == "newer" and start_date is not None:
+        logger.debug(f"Filtering for photos with datetime_original > {start_date} since direction is 'newer'")
+        q = q.where(
+            or_(
+                Photo.datetime_original > start_date,
+                    and_(Photo.datetime_original == start_date, Photo.guid > guid)
+                )
+        )
+        q = q.order_by(Photo.datetime_original.asc(), Photo.guid.asc())
+    elif direction == "older" and start_date is not None:
+        logger.debug(f"Filtering for photos with datetime_original <= {start_date} since direction is 'older'")
+        q = q.where(
+            or_(
+                Photo.datetime_original < start_date,
+                and_(Photo.datetime_original == start_date, Photo.guid < guid)
+            )
+        )
+        q = q.order_by(Photo.datetime_original.desc(), Photo.guid.desc())
+    if limit is not None:
+        q = q.limit(limit)
+
+    results = list(session.execute(q).scalars().all())
+    if direction == "newer":
+        results.reverse()
+    return results

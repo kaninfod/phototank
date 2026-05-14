@@ -1,0 +1,28 @@
+<div class="grid-item {{ it.layout_class }}">
+    <div class="photo-tile position-relative rounded overflow-hidden shadow-sm" data-guid="{{ it.guid }}" data-gallery-target="photoTile">
+        
+        <img class="thumb-img d-block w-100" 
+             loading="lazy" 
+             src="{{ it.thumb_url }}" 
+             alt="{{ it.guid }}">
+
+        <button data-gallery-target="ratePhoto" 
+                data-action="click->gallery#changePhotoRating"
+                type="button" 
+                data-guid="{{ it.guid }}"
+                data-rating="{{ it.rating or 0 }}"
+                class="badge rounded-pill rating-badge position-absolute top-0 end-0 m-2 {% if (it.rating or 0) == 0 %}bg-secondary text-light{% else %}bg-warning text-dark{% endif %}">
+            {{ it.rating or 0 }}
+        </button>
+
+        <div class="form-check position-absolute top-0 start-0 m-2 thumb-check">
+            <input data-gallery-target="selectPhoto"
+                   data-action="change->gallery#togglePhotoSelection"
+                   class="form-check-input select-photo" 
+                   type="checkbox" 
+                   data-guid="{{ it.guid }}">
+        </div>
+        <span class="position-absolute bottom-0 start-0 m-2 fs-small">{{ it.date }}</span>
+        <a href="/phototank/photo/{{ it.guid }}?jump={{ jump_date }}{% if rating is not none %}&rating={{ rating }}{% endif %}{% if tag_id is not none %}&tag={{ tag_id }}{% endif %}{% if country %}&country={{ country|urlencode }}{% endif %}{% if city %}&city={{ city|urlencode }}{% endif %}&from={{ current|urlencode }}" class="stretched-link" aria-label="Open photo"></a>
+    </div>
+</div>

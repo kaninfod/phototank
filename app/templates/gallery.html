@@ -1,27 +1,29 @@
 {% extends "base.html" %}
 
+
 {% block nav_extra %}
-  {% include "partials/gallery_nav_extra.html" %}
+  {% include "partials/gallery/_gallery_nav_extra.html" %}
 {% endblock %}
 
-{% block topbar %}
-  {# moved into navbar #}
-{% endblock %}
 
 {% block content %}
-  <div class="container-fluid h-100 py-2">
-    {% include "partials/gallery_grid.html" %}
+  <div  
+    data-controller="gallery" 
+    id="content_gallery"
+    >
+      <div class="container-fluid h-100 py-2">
+        {% include "partials/gallery/_gallery_grid.html" %}
+      </div>
+      {% include "partials/gallery/_gallery_offcanvas.html" %}
   </div>
-  {% include "partials/gallery_offcanvas.html" %}
-{% endblock %}
+  {% endblock %}
 
-{% block footer %}
-  {% include "partials/gallery_footer.html" %}
-{% endblock %}
+
+
 
 {% block scripts %}
-  <script src="/phototank/static/js/gallery.js"></script>
-  <script src="/phototank/static/js/rating.js"></script>
-  <script src="/phototank/static/js/tags.js"></script>
-  <script src="/phototank/static/js/shortcuts.js"></script>
+  <!-- <script src="/phototank/static/js/gallery.js"></script> -->
+  <!-- <script src="/phototank/static/js/rating.js"></script> -->
+  <!-- <script src="/phototank/static/js/tags.js"></script> -->
+  <!-- <script src="/phototank/static/js/shortcuts.js"></script> -->
 {% endblock %}

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-
+import mimetypes
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -70,6 +70,8 @@ def create_app() -> FastAPI:
             body_for_log,
         )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+    # mimetypes.add_type('application/javascript', '.js')
 
     static_dir = Path(__file__).resolve().parent / "static"
     app.mount("/phototank/static", StaticFiles(directory=str(static_dir)), name="static")

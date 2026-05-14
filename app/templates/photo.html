@@ -1,16 +1,18 @@
 {% extends "base.html" %}
 
 {% block nav_main %}
-  {% include "partials/photo_nav_main.html" %}
+  {% include "partials/photo/_photo_nav_main.html" %}
 {% endblock %}
 
 {% block content %}
-  {% include "partials/photo_panel.html" %}
+  <div data-controller="photodetail" id="content_photo" data-photodetail-guid-value="{{ photo.guid }}" data-action="appstate:updated@window->photodetail#updateAppState">
+    {% include "partials/photo/_photo_panel.html" %}
+  </div>
 {% endblock %}
 
 {% block scripts %}
-  <script src="/phototank/static/js/rating.js"></script>
+  <!-- <script src="/phototank/static/js/rating.js"></script>
   <script src="/phototank/static/js/selection_detail.js"></script>
   <script src="/phototank/static/js/tags.js"></script>
-  <script src="/phototank/static/js/shortcuts.js"></script>
+  <script src="/phototank/static/js/shortcuts.js"></script> -->
 {% endblock %}

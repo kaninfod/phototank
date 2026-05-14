@@ -10,6 +10,9 @@
 {% elif kind == 'phone_reconcile' %}
   {% set target_id = 'phoneReconcileStatusWrap-' ~ job.job_id %}
   {% set title = 'Phone reconcile job' %}
+{% elif kind == 'delete_photos' %}
+  {% set target_id = 'deleteStatusWrap-' ~ job.job_id %}
+  {% set title = 'Delete job' %}
 {% else %}
   {% set target_id = 'validateStatusWrap-' ~ job.job_id %}
   {% set title = 'Validate job' %}

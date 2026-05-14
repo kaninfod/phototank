@@ -1,0 +1,30 @@
+{% if not items %}
+  <div class="alert alert-secondary">No photos found for this range.</div>
+{% else %}
+  {% set current = request.url.path ~ (('?' ~ request.url.query) if request.url.query else '') %}
+  <div class="pt-1">
+    <div data-gallery-target="topSentinel" class="w-100" style="height: 10px;"></div>
+    <div class="grid"
+      data-gallery-target="photoGrid"
+      data-action="
+        appstate:updated@window->gallery#refreshUI
+        appstate:fetch-more@window->gallery#fetchMore"
+      data-query-params-jump_date="{{ jump_date }}"
+      data-query-params-limit="{{ limit }}"
+      data-query-params-rating_int="{{ rating_int }}"
+      data-query-params-tag_id="{{ tag_id }}"
+      data-query-params-country="{{ country_value }}"
+      data-query-params-city="{{ city_value }}"
+      data-query-params-newer="{{ newer_cursor }}"
+      data-query-params-older="{{ older_cursor }}"
+
+      
+      >
+      {% for it in items %}
+        {% set idx = loop.index %}
+        {% include "partials/gallery/_photo.html" %}
+      {% endfor %}
+    </div>
+    <div data-gallery-target="bottomSentinel" class="w-100" style="height: 10px;"></div>
+  </div>
+{% endif %}

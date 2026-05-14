@@ -9,8 +9,9 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, func, or_, select
+import logging
 
-from ..core.db import create_job, fetch_photo, get_job, list_tags, sessionmaker_for, tags_for_photo
+from ..core.db import create_job, fetch_photo, get_job, list_tags, sessionmaker_for, tags_for_photo, list_countries, list_cities, photos
 from ..jobs import new_job_id, run_ingest_job, run_phone_reconcile_job, run_phone_sync_job, run_validate_job
 from ..core.models import Photo, PhotoTag, ScanJob
 from ..core.router_helpers import ensure_deriv_root, ensure_dirs_and_db, ensure_import_dirs, settings_or_500
@@ -20,7 +21,7 @@ web_router = APIRouter()
 
 _templates_dir = Path(__file__).resolve().parents[1] / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
-
+logger = logging.getLogger(__name__)
 
 def _dt_min(value) -> str:
     """Format a datetime-ish value as 'YYYY-MM-DD HH:MM'.
@@ -59,6 +60,8 @@ def _job_kind(job: ScanJob) -> str | None:
         return "phone_sync"
     if jt == "phone_reconcile":
         return "phone_reconcile"
+    if jt == "delete_photos":
+        return "delete_photos"
 
     # Backward compatibility for old rows written before job_type existed.
     msg = (job.message or "").strip().lower()
@@ -224,6 +227,7 @@ def gallery(
     limit: int = Query(60, ge=1, le=200),
     older: str | None = Query(None, description="Keyset cursor for older page"),
     newer: str | None = Query(None, description="Keyset cursor for newer page"),
+    direction: str | None = Query(None, description="(internal) query param to indicate pagination direction"),
     rating: str | None = Query(None, description="Filter photos by rating (0..3)"),
     tag: str | None = Query(None, description="Filter photos by tag id"),
     country: str | None = Query(None, description="Filter photos by geo country"),
@@ -236,17 +240,11 @@ def gallery(
     raw_jump = jump or start
     jump_end_iso, jump_date_value = _parse_jump_to_end_iso(raw_jump)
 
-    direction: str
-    cursor_value: str | None
-    if older:
-        direction = "older"
-        cursor_value = older
-    elif newer:
-        direction = "newer"
-        cursor_value = newer
-    else:
+    limit = 100
+
+    if direction is None:
         direction = "initial"
-        cursor_value = None
+        #raise HTTPException(status_code=400, detail="direction must be 'older', 'newer', or 'initial'") 
 
     rating_int: int | None = None
     if rating is not None and rating != "":
@@ -264,157 +262,175 @@ def gallery(
         except Exception:
             raise HTTPException(status_code=400, detail="tag must be an integer")
 
+
+
     country_value = (country or "").strip() or None
     city_value = (city or "").strip() or None
     city_norm = city_value.casefold() if city_value else None
 
+
     with SessionLocal() as session:
+        
+        
         all_tags = list_tags(session)
+        
+        geo_countries = list_countries(session)
+        
+        geo_cities = list_cities(session, country=country_value)
 
-        geo_country_rows = list(
-            session.execute(
-                select(Photo.geo_country)
-                .where(Photo.geo_country.is_not(None))
-                .where(Photo.geo_country != "")
-                .distinct()
-                .order_by(Photo.geo_country.asc())
-            ).all()
-        )
-        geo_countries = [str(r[0]) for r in geo_country_rows if r and r[0]]
 
-        geo_cities_q = (
-            select(Photo.geo_city)
-            .where(Photo.geo_city.is_not(None))
-            .where(Photo.geo_city != "")
-        )
-        if country_value is not None:
-            geo_cities_q = geo_cities_q.where(Photo.geo_country == country_value)
-        geo_city_rows = list(
-            session.execute(
-                geo_cities_q.distinct().order_by(Photo.geo_city.asc())
-            ).all()
-        )
-        geo_cities = [str(r[0]) for r in geo_city_rows if r and r[0]]
-
-        base = select(Photo).where(Photo.datetime_original.is_not(None))
-        if rating_int is not None:
-            base = base.where(Photo.rating == rating_int)
-        if tag_id is not None:
-            base = base.join(PhotoTag, PhotoTag.photo_guid == Photo.guid).where(PhotoTag.tag_id == tag_id)
-        if country_value is not None:
-            base = base.where(Photo.geo_country == country_value)
-        if city_norm is not None:
-            base = base.where(Photo.geo_city_norm == city_norm)
-
-        rows: list[Photo]
+        newest_date, newest_guid = b64decode_cursor(newer) if newer else (None, None)
+        oldest_date, oldest_guid = b64decode_cursor(older) if older else (None, None)
+        guid: str | None = None
+        start_date: str | None = None
         if direction == "initial":
-            q = base.where(Photo.datetime_original <= jump_end_iso).order_by(
-                Photo.datetime_original.desc(), Photo.guid.desc()
-            )
-            rows = session.execute(q.limit(limit + 1)).scalars().all()
-        else:
-            if not cursor_value:
-                raise HTTPException(status_code=400, detail="missing cursor")
-            cursor_dt, cursor_guid = b64decode_cursor(cursor_value)
-            if direction == "older":
-                q = base.where(
-                    or_(
-                        Photo.datetime_original < cursor_dt,
-                        and_(Photo.datetime_original == cursor_dt, Photo.guid < cursor_guid),
-                    )
-                ).order_by(Photo.datetime_original.desc(), Photo.guid.desc())
-                rows = session.execute(q.limit(limit + 1)).scalars().all()
-            else:
-                q = base.where(
-                    or_(
-                        Photo.datetime_original > cursor_dt,
-                        and_(Photo.datetime_original == cursor_dt, Photo.guid > cursor_guid),
-                    )
-                ).order_by(Photo.datetime_original.asc(), Photo.guid.asc())
-                rows = session.execute(q.limit(limit + 1)).scalars().all()
+            start_date = jump_end_iso
+        elif direction == "newer" and newest_date is not None:
+            start_date = newest_date  
+            guid = newest_guid
+        elif direction == "older" and oldest_date is not None:
+            start_date = oldest_date  
+            guid = oldest_guid
 
-        has_more_in_direction = len(rows) > limit
-        rows = rows[:limit]
 
-        if direction == "newer":
-            # Display stays newest-first regardless of query direction.
-            rows = list(reversed(rows))
+        logger.debug("Fetching photos with  start_date=%s, direction=%s", start_date, direction)
 
-        has_newer = False
-        has_older = False
-        newer_cursor = ""
-        older_cursor = ""
+        rows = photos(
+            session=session,
+            guid=guid,
+            start_date=start_date,
+            direction=direction,
+            limit=limit,
+            rating_int=rating_int,
+            tag_id=tag_id,
+            country_value=country_value,
+            city_value=city_value,
+        )
+        logger.debug("Fetched %d photos", len(rows) if rows else 0)
 
-        if rows:
-            newest = rows[0]
-            oldest = rows[-1]
+        newer_cursor: str | None = None
+        older_cursor: str | None = None
+        if rows is not None and len(rows) > 0:
+            rows = rows[:limit]
 
-            # Older = items strictly older than the oldest item on this page.
-            older_exists = session.execute(
-                base.where(
-                    or_(
-                        Photo.datetime_original < oldest.datetime_original,
-                        and_(
-                            Photo.datetime_original == oldest.datetime_original,
-                            Photo.guid < oldest.guid,
-                        ),
-                    )
-                )
-                .limit(1)
-            ).first()
-            has_older = bool(older_exists) or (direction in {"initial", "older"} and has_more_in_direction)
-            if has_older:
-                older_cursor = b64encode_cursor(oldest.datetime_original, oldest.guid)
-
-            # Newer = items strictly newer than the newest item on this page.
-            newer_exists = session.execute(
-                base.where(
-                    or_(
-                        Photo.datetime_original > newest.datetime_original,
-                        and_(
-                            Photo.datetime_original == newest.datetime_original,
-                            Photo.guid > newest.guid,
-                        ),
-                    )
-                )
-                .limit(1)
-            ).first()
-            has_newer = bool(newer_exists) or (direction == "newer" and has_more_in_direction)
-            if has_newer:
+            if direction == "initial":
+                newest = rows[0]
+                oldest = rows[-1]
+                start_date = jump_end_iso
                 newer_cursor = b64encode_cursor(newest.datetime_original, newest.guid)
+                older_cursor = b64encode_cursor(oldest.datetime_original, oldest.guid)
+            elif direction == "newer" and newest_date is not None:
+                newest = rows[0]
+                newer_cursor = b64encode_cursor(newest.datetime_original, newest.guid)
+                older_cursor = b64encode_cursor(oldest_date, oldest_guid) if oldest_date and oldest_guid else None
+            elif direction == "older" and oldest_date is not None:
+                oldest = rows[-1]
+                older_cursor = b64encode_cursor(oldest.datetime_original, oldest.guid)
+                newer_cursor = b64encode_cursor(newest_date, newest_guid) if newest_date and newest_guid else None
 
-    items = [
-        {
-            "guid": r.guid,
-            "thumb_url": f"/phototank/thumb/{r.guid}",
-            "date": r.datetime_original,
-            "rating": r.rating,
-        }
-        for r in rows
-    ]
+        items = [
+            {
+                "guid": r.guid,
+                "thumb_url": f"/phototank/thumb/{r.guid}",
+                "date": r.datetime_original,
+                "rating": r.rating,
+                "orientation": "portrait" if r.height > r.width else "landscape",
+            }
+            for r in rows
+        ]
+        
+        items = apply_masonry_layout(items, num_cols=6)
+        params =         {
+                "request": request,
+                "page_title": "Gallery",
+                "items": items,
+                "jump_date": jump_date_value,
+                "limit": limit,
+                "rating": rating_int,
+                "tag_id": tag_id,
+                "country": country_value,
+                "city": city_value,
+                "geo_countries": geo_countries,
+                "geo_cities": geo_cities,
+                "tags": all_tags,
+                # "has_newer": has_newer,
+                # "has_older": has_older,
+                "newer_cursor": newer_cursor,
+                "older_cursor": older_cursor,
+            }
 
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        headers = {}
+        if older_cursor is not None:
+            headers["older_cursor"] = older_cursor
+        elif older:  # Preserve the incoming cursor if no new data
+            headers["older_cursor"] = older
+            
+        if newer_cursor is not None:
+            headers["newer_cursor"] = newer_cursor
+        elif newer:  # Preserve the incoming cursor if no new data
+            headers["newer_cursor"] = newer
+        
+        return templates.TemplateResponse(
+            "partials/gallery/_fetch_photos.html",
+            params,
+            headers=headers,
+        )
+    
     return templates.TemplateResponse(
         "gallery.html",
-        {
-            "request": request,
-            "page_title": "Gallery",
-            "items": items,
-            "jump_date": jump_date_value,
-            "limit": limit,
-            "rating": rating_int,
-            "tag_id": tag_id,
-            "country": country_value,
-            "city": city_value,
-            "geo_countries": geo_countries,
-            "geo_cities": geo_cities,
-            "tags": all_tags,
-            "has_newer": has_newer,
-            "has_older": has_older,
-            "newer_cursor": newer_cursor,
-            "older_cursor": older_cursor,
-        },
+        params
     )
 
+def apply_masonry_layout(photos, num_cols=6):
+    """
+    Optimized for Flexbox: Packs items into 2-unit blocks 
+    to ensure perfect fit in 2, 4, and 6 column grids.
+    """
+    balanced_list = []
+    portrait_buffer = None # Holds an "orphan" portrait to find it a buddy
+
+    for i, photo in enumerate(photos):
+        orient = photo.get('orientation', 'landscape')
+        
+        # Determine if this landscape should be "Wide"
+        # We use a simple toggle; in Flexbox, every 'Wide' is 2 units.
+        is_wide = False
+        if orient == 'landscape' and i % 5 == 0:
+            is_wide = True
+
+        if is_wide:
+            photo['layout_class'] = "grid-item--wide"
+            # Wide items are self-sufficient (2 units), add immediately
+            balanced_list.append(photo)
+        
+        elif orient == 'portrait':
+            photo['layout_class'] = ""
+            if portrait_buffer is None:
+                # First portrait found, wait for a pair
+                portrait_buffer = photo
+            else:
+                # Found a buddy! Add both to keep the 'even unit' rule
+                balanced_list.append(portrait_buffer)
+                balanced_list.append(photo)
+                portrait_buffer = None
+        
+        else:
+            # Standard Landscape (1 unit)
+            photo['layout_class'] = ""
+            # Treat standard landscape like a portrait for packing
+            if portrait_buffer is None:
+                portrait_buffer = photo
+            else:
+                balanced_list.append(portrait_buffer)
+                balanced_list.append(photo)
+                portrait_buffer = None
+
+    # Clean up: If we have one left over at the very end
+    if portrait_buffer:
+        balanced_list.append(portrait_buffer)
+                
+    return balanced_list
 
 @web_router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
@@ -871,7 +887,7 @@ def photo_detail(
 
     # If HTMX is requesting, return only the panel fragment.
     if request.headers.get("HX-Request") == "true":
-        return templates.TemplateResponse("partials/photo_panel_htmx.html", ctx)
+        return templates.TemplateResponse("partials/photo/_photo_panel_htmx.html", ctx)
 
     # row is a dict from db.fetch_photo
     return templates.TemplateResponse("photo.html", ctx)

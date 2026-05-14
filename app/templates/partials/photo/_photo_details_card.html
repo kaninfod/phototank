@@ -10,7 +10,10 @@
 
       <dt class="col-4">Rating</dt>
       <dd class="col-8">{{ photo.rating or 0 }}</dd>
-
+      
+      <dt class="col-4">Date</dt>
+      <dd class="col-8">{{ photo.datetime_original }}</dd>
+      
       <dt class="col-4">Size</dt>
       <dd class="col-8">{{ photo.width }}×{{ photo.height }} ({{ photo.file_size }} bytes)</dd>
 
@@ -50,27 +53,35 @@
 
       <dt class="col-4">Tags</dt>
       <dd class="col-8" id="photoTags" data-photo-guid="{{ photo.guid }}">
-        {% if photo_tags and photo_tags|length > 0 %}
-          <div class="d-flex flex-wrap gap-1">
-            {% for t in photo_tags %}
-              <span class="badge bg-{{ t.color }} {% if t.color == 'warning' %}text-dark{% else %}text-light{% endif %}">
-                {{ t.name }}
-                <button type="button" class="btn btn-sm btn-link p-0 ms-1 text-reset tag-remove" data-tag-id="{{ t.id }}" aria-label="Remove tag">×</button>
-              </span>
-            {% endfor %}
+        
+          <div data-photodetail-target="tagContainer" class="d-flex flex-wrap gap-1">
+            <span class="d-none" data-photodetail-target="tagToClone">
+              <button data-action="click->photodetail#removeTag" data-tag-id=0 type="button" class="btn btn-sm btn-link p-0 ms-1 text-reset tag-remove" aria-label="Remove tag">×</button>
+            </span>
+            {% if photo_tags and photo_tags|length > 0 %}
+              
+
+              
+              {% for t in photo_tags %}
+                <span class="badge bg-{{ t.color }} {% if t.color == 'warning' %}text-dark{% else %}text-light{% endif %}">
+                  {{ t.name }}
+                  <button data-action="click->photodetail#removeTag" data-tag-id="{{ t.id }}" type="button" class="btn btn-sm btn-link p-0 ms-1 text-reset tag-remove" aria-label="Remove tag">×</button>
+                </span>
+              {% endfor %}
+            {% else %}
+              <span class="text-muted"></span>
+            {% endif %}
           </div>
-        {% else %}
-          <span class="text-muted">—</span>
-        {% endif %}
+        
 
         <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
-          <select class="form-select form-select-sm" id="detailTagSelect" style="max-width: 16rem;">
+          <select data-photodetail-target="tagToAdd" class="form-select form-select-sm" id="detailTagSelect" style="max-width: 16rem;">
             <option value="" selected disabled>Add a tag…</option>
             {% for t in tags %}
               <option value="{{ t.id }}">{{ t.name }}</option>
             {% endfor %}
           </select>
-          <button type="button" class="btn btn-outline-primary btn-sm" id="detailTagAdd">Add</button>
+          <button data-action="click->photodetail#addTag" type="button" class="btn btn-outline-primary btn-sm" id="detailTagAdd">Add</button>
         </div>
       </dd>
     </dl>

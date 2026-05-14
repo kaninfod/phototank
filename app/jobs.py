@@ -8,6 +8,16 @@ def new_job_id() -> str:
     return uuid.uuid4().hex
 
 
+def run_delete_photos_job(
+    job_id: str,
+    *,
+    guids: list[str],
+) -> None:
+    from .processing.jobs import run_delete_photos_job as _run_delete_photos_job
+
+    _run_delete_photos_job(job_id, guids=guids)
+
+
 def run_validate_job(
     job_id: str,
     *,

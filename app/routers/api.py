@@ -20,7 +20,7 @@ from ..core.db import (
     tags_for_photo,
 )
 from ..services.derivatives import mid_path, thumb_path
-from ..jobs import new_job_id, run_phone_reconcile_job, run_phone_sync_job
+from ..jobs import new_job_id, run_delete_photos_job, run_phone_reconcile_job, run_phone_sync_job
 from ..core.models import Photo
 from ..core.router_helpers import ensure_deriv_root, ensure_dirs_and_db, settings_or_500
 from ..core.util import normalize_guid, resolve_relpath_under
@@ -167,8 +167,8 @@ def rate_photo(req: RateRequest):
 
 @api_router.post("/delete")
 def delete_photos(req: DeleteRequest):
-    """Delete photos everywhere: source file, derivatives, and DB record."""
-
+    """Delete photos via background job."""
+    
     settings = settings_or_500()
     ensure_dirs_and_db(settings.photo_root, settings.db_path)
     ensure_deriv_root(settings.deriv_root)
@@ -177,67 +177,20 @@ def delete_photos(req: DeleteRequest):
 
     logger.info("delete requested: count=%d", len(req.guids))
 
-    requested = [normalize_guid(g) for g in req.guids]
-
-    deleted: list[str] = []
-    not_found: list[str] = []
-    errors: list[dict[str, str]] = []
-
+    # Create job
+    job_id = new_job_id()
     with SessionLocal() as session:
-        for guid in requested:
-            photo = session.get(Photo, guid)
-            if photo is None:
-                not_found.append(guid)
-                continue
+        with session.begin():
+            create_job(session, job_id=job_id, year=None, job_type="delete_photos")
+        session.commit()
 
-            # Resolve filesystem paths.
-            source_path = resolve_relpath_under(settings.photo_root, photo.rel_path)
-            tpath = thumb_path(settings.deriv_root, guid)
-            mpath = mid_path(settings.deriv_root, guid)
-
-            # Delete derivatives first.
-            try:
-                try:
-                    tpath.unlink()
-                except FileNotFoundError:
-                    pass
-                try:
-                    mpath.unlink()
-                except FileNotFoundError:
-                    pass
-
-                try:
-                    source_path.unlink()
-                except FileNotFoundError:
-                    # Treat missing source as already-deleted; still remove DB row.
-                    pass
-            except Exception as e:
-                errors.append({"guid": guid, "error": f"{type(e).__name__}: {e}"})
-                session.rollback()
-                continue
-
-            try:
-                session.delete(photo)
-                session.commit()
-                deleted.append(guid)
-            except Exception as e:
-                session.rollback()
-                errors.append({"guid": guid, "error": f"DB delete failed: {type(e).__name__}: {e}"})
-
-    logger.info(
-        "delete finished: requested=%d deleted=%d not_found=%d errors=%d",
-        len(requested),
-        len(deleted),
-        len(not_found),
-        len(errors),
-    )
+    # Start job in background thread
+    _start_job_thread(run_delete_photos_job, job_id, guids=req.guids)
 
     return {
-        "requested": len(requested),
-        "deleted": len(deleted),
-        "deleted_guids": deleted,
-        "not_found": not_found,
-        "errors": errors,
+        "job_id": job_id,
+        "requested": len(req.guids),
+        "status": "Job started"
     }
 
 
@@ -301,10 +254,13 @@ def apply_tag(tag_id: int, req: TagApplyRequest):
     with SessionLocal() as session:
         try:
             applied = apply_tag_to_photos(session, tag_id=int(tag_id), guids=guids)
+            tag = create_or_get_tag(session, name="", description="", color="", tag_id=tag_id)
+            logger.info("Applied tag '%s' to %d photos", tag.name if tag else tag_id, applied)
         except Exception as e:
+            logger.error("Error applying tag_id=%d to photos: %s: %s", tag_id, type(e).__name__, e)
             raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
-    return {"tag_id": int(tag_id), "requested": len(guids), "applied": int(applied)}
+    return {"tag_id": int(tag_id), "requested": len(guids), "applied": int(applied), "tag": {"id": int(tag.id), "name": tag.name, "description": tag.description, "color": tag.color} if tag else None}
 
 
 @api_router.post("/tags/{tag_id}/remove")
