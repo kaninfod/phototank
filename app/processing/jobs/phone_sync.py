@@ -206,6 +206,12 @@ def run_phone_sync_job(
             errors=errors,
             finished=True,
         )
+
+        try:
+            shutil.rmtree(stage_root, ignore_errors=True)
+            logger.info("phone sync cleaned up stage_root=%s", stage_root)
+        except Exception:
+            logger.exception("phone sync cleanup failed stage_root=%s", stage_root)
     except Exception as e:
         logger.exception("phone sync job crashed job_id=%s", job_id)
         set_job_progress(

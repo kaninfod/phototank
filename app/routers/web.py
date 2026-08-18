@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 from pathlib import Path
-import threading
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
@@ -12,7 +11,7 @@ from sqlalchemy import and_, func, or_, select
 import logging
 
 from ..core.db import create_job, fetch_photo, get_job, list_tags, sessionmaker_for, tags_for_photo, list_countries, list_cities, photos
-from ..jobs import new_job_id, run_ingest_job, run_phone_reconcile_job, run_phone_sync_job, run_validate_job
+from ..jobs import new_job_id
 from ..core.models import Photo, PhotoTag, ScanJob
 from ..core.router_helpers import ensure_deriv_root, ensure_dirs_and_db, ensure_import_dirs, settings_or_500
 from ..core.util import b64decode_cursor, b64encode_cursor, normalize_guid
@@ -62,6 +61,8 @@ def _job_kind(job: ScanJob) -> str | None:
         return "phone_reconcile"
     if jt == "delete_photos":
         return "delete_photos"
+    if jt == "backup":
+        return "backup"
 
     # Backward compatibility for old rows written before job_type existed.
     msg = (job.message or "").strip().lower()
@@ -87,11 +88,6 @@ def _job_sort_key(job: ScanJob) -> tuple[str, str, str]:
         str(job.finished_at or ""),
         str(job.job_id or ""),
     )
-
-
-def _start_job_thread(target, /, *args, **kwargs) -> None:
-    t = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
-    t.start()
 
 
 
@@ -495,6 +491,10 @@ def dashboard(request: Request):
             "phone_sync_default_port": int(settings.phone_sync_port),
             "phone_sync_default_source": settings.phone_sync_source_path or "",
             "phone_sync_default_dest": settings.phone_sync_dest_path or "",
+            "backup_default_user": settings.backup_ssh_user or "",
+            "backup_default_host": settings.backup_host or "",
+            "backup_default_port": int(settings.backup_port),
+            "backup_default_dest": settings.backup_dest_path or "",
         },
     )
 
@@ -518,10 +518,8 @@ def dashboard_import_start(
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
-            create_job(session, job_id=job_id, year=None, job_type="ingest")
+            create_job(session, job_id=job_id, year=None, job_type="ingest", params={"ingest_mode": mode})
         session.commit()
-
-    _start_job_thread(run_ingest_job, job_id, ingest_mode=mode)
 
     with SessionLocal() as session:
         job = _load_job_or_404(session=session, job_id=job_id)
@@ -584,15 +582,17 @@ def dashboard_validate_start(
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
-            create_job(session, job_id=job_id, year=year_int, job_type="validate")
+            create_job(
+                session,
+                job_id=job_id,
+                year=year_int,
+                job_type="validate",
+                params={
+                    "repair_mid_exif": bool(repair_mid_exif),
+                    "do_geolookup": bool(do_geolookup),
+                },
+            )
         session.commit()
-
-    _start_job_thread(
-        run_validate_job,
-        job_id,
-        repair_mid_exif=bool(repair_mid_exif),
-        do_geolookup=bool(do_geolookup),
-    )
 
     with SessionLocal() as session:
         job = _load_job_or_404(session=session, job_id=job_id)
@@ -661,19 +661,21 @@ def dashboard_phone_sync_start(
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
-            create_job(session, job_id=job_id, year=None, job_type="phone_sync")
+            create_job(
+                session,
+                job_id=job_id,
+                year=None,
+                job_type="phone_sync",
+                params={
+                    "ssh_user": user_value,
+                    "phone_ip": ip_value,
+                    "ssh_port": port_value,
+                    "remote_source_path": src_value,
+                    "remote_dest_path": dst_value,
+                    "ssh_key_path": str(key_path),
+                },
+            )
         session.commit()
-
-    _start_job_thread(
-        run_phone_sync_job,
-        job_id,
-        ssh_user=user_value,
-        phone_ip=ip_value,
-        ssh_port=port_value,
-        remote_source_path=src_value,
-        remote_dest_path=dst_value,
-        ssh_key_path=key_path,
-    )
 
     with SessionLocal() as session:
         job = _load_job_or_404(session=session, job_id=job_id)
@@ -718,18 +720,20 @@ def dashboard_phone_reconcile_start(
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
-            create_job(session, job_id=job_id, year=None, job_type="phone_reconcile")
+            create_job(
+                session,
+                job_id=job_id,
+                year=None,
+                job_type="phone_reconcile",
+                params={
+                    "ssh_user": user_value,
+                    "phone_ip": ip_value,
+                    "ssh_port": port_value,
+                    "remote_dest_path": dst_value,
+                    "ssh_key_path": str(key_path),
+                },
+            )
         session.commit()
-
-    _start_job_thread(
-        run_phone_reconcile_job,
-        job_id,
-        ssh_user=user_value,
-        phone_ip=ip_value,
-        ssh_port=port_value,
-        remote_dest_path=dst_value,
-        ssh_key_path=key_path,
-    )
 
     with SessionLocal() as session:
         job = _load_job_or_404(session=session, job_id=job_id)
@@ -739,6 +743,80 @@ def dashboard_phone_reconcile_start(
         {
             "request": request,
             "kind": "phone_reconcile",
+            "job": job,
+        },
+    )
+
+
+@web_router.post("/dashboard/backup/start", response_class=HTMLResponse)
+def dashboard_backup_start(
+    request: Request,
+    dest: str | None = Form(None),
+    ssh_user: str | None = Form(None),
+    host: str | None = Form(None),
+    ssh_port: int | None = Form(None),
+    ssh_key_path: str | None = Form(None),
+    dry_run: bool = Form(False),
+):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    ensure_deriv_root(settings.deriv_root)
+
+    dest_value = (dest or settings.backup_dest_path or "").strip()
+    user_value = (ssh_user or settings.backup_ssh_user or "").strip() or None
+    host_value = (host or settings.backup_host or "").strip() or None
+    port_value = int(ssh_port or settings.backup_port)
+    key_path_raw = (ssh_key_path or str(settings.backup_ssh_key_path)).strip()
+    key_path = Path(key_path_raw).expanduser()
+
+    if not dest_value:
+        raise HTTPException(status_code=400, detail="missing backup destination")
+
+    use_ssh = bool(user_value and host_value)
+    if use_ssh and not key_path.exists():
+        raise HTTPException(status_code=400, detail=f"backup ssh key not found: {key_path}")
+
+    # Keep a trailing slash for directory sources; destination is the root folder.
+    dest_value = dest_value.rstrip("/")
+    if use_ssh:
+        dest_value = f"{user_value}@{host_value}:{dest_value}"
+
+    SessionLocal = sessionmaker_for(settings.db_path)
+
+    job_id = new_job_id()
+    with SessionLocal() as session:
+        with session.begin():
+            create_job(
+                session,
+                job_id=job_id,
+                year=None,
+                job_type="backup",
+                params={
+                    "backup_sources": [
+                        str(settings.photo_root.resolve()),
+                        str(settings.deriv_root.resolve()),
+                        str(settings.db_path.resolve()),
+                    ],
+                    "dest": dest_value,
+                    "ssh_user": user_value,
+                    "ssh_host": host_value,
+                    "ssh_port": port_value,
+                    "ssh_key_path": str(key_path),
+                    "use_ssh": use_ssh,
+                    "delete": True,
+                    "dry_run": bool(dry_run),
+                },
+            )
+        session.commit()
+
+    with SessionLocal() as session:
+        job = _load_job_or_404(session=session, job_id=job_id)
+
+    return templates.TemplateResponse(
+        "partials/dashboard_job_status.html",
+        {
+            "request": request,
+            "kind": "backup",
             "job": job,
         },
     )

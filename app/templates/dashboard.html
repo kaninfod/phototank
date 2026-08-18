@@ -69,6 +69,43 @@
         </div>
 
         <div class="card mb-3">
+          <div class="card-header">Backup</div>
+          <div class="card-body">
+            <form class="row g-2 align-items-end" hx-post="/phototank/dashboard/backup/start" hx-target="#jobsRunning" hx-swap="afterbegin">
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="backupHost">SSH host (optional)</label>
+                <input class="form-control" id="backupHost" name="host" value="{{ backup_default_host }}" placeholder="backup-server.local" />
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="backupUser">SSH user (optional)</label>
+                <input class="form-control" id="backupUser" name="ssh_user" value="{{ backup_default_user }}" placeholder="backup-user" />
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="backupPort">Port</label>
+                <input class="form-control" id="backupPort" name="ssh_port" inputmode="numeric" value="{{ backup_default_port }}" />
+              </div>
+              <div class="col-12 col-md-8">
+                <label class="form-label" for="backupDest">Destination path</label>
+                <input class="form-control" id="backupDest" name="dest" value="{{ backup_default_dest }}" required placeholder="/mnt/backup/phototank or backup-server:/mnt/backup/phototank" />
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="backupKeyPath">SSH key path</label>
+                <input class="form-control" id="backupKeyPath" name="ssh_key_path" value="~/.ssh/id_ed25519" />
+              </div>
+              <div class="col-12">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="true" id="backupDryRun" name="dry_run" />
+                  <label class="form-check-label" for="backupDryRun">Dry run</label>
+                </div>
+              </div>
+              <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Start backup</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="card mb-3">
           <div class="card-header">Validate</div>
           <div class="card-body">
             <form class="row g-2 align-items-end" hx-post="/phototank/dashboard/validate/start" hx-target="#jobsRunning" hx-swap="afterbegin">
@@ -80,6 +117,10 @@
                 <div class="form-check">
                   <input class="form-check-input" type="checkbox" value="true" id="validateDoGeoLookup" name="do_geolookup" checked />
                   <label class="form-check-label" for="validateDoGeoLookup">Do geolookup</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="true" id="validateRepairMidExif" name="repair_mid_exif" />
+                  <label class="form-check-label" for="validateRepairMidExif">Repair mid EXIF</label>
                 </div>
               </div>
               <div class="col-auto">

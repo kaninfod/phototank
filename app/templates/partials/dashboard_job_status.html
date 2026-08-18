@@ -13,6 +13,9 @@
 {% elif kind == 'delete_photos' %}
   {% set target_id = 'deleteStatusWrap-' ~ job.job_id %}
   {% set title = 'Delete job' %}
+{% elif kind == 'backup' %}
+  {% set target_id = 'backupStatusWrap-' ~ job.job_id %}
+  {% set title = 'Backup job' %}
 {% else %}
   {% set target_id = 'validateStatusWrap-' ~ job.job_id %}
   {% set title = 'Validate job' %}

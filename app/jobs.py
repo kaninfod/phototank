@@ -96,3 +96,32 @@ def run_phone_reconcile_job(
         remote_dest_path=remote_dest_path,
         ssh_key_path=ssh_key_path,
     )
+
+
+def run_backup_job(
+    job_id: str,
+    *,
+    backup_sources: list[str],
+    dest: str,
+    ssh_user: str | None = None,
+    ssh_host: str | None = None,
+    ssh_port: int = 22,
+    ssh_key_path: Path | None = None,
+    use_ssh: bool = False,
+    delete: bool = True,
+    dry_run: bool = False,
+) -> None:
+    from .processing.jobs import run_backup_job as _run_backup_job
+
+    _run_backup_job(
+        job_id,
+        backup_sources=backup_sources,
+        dest=dest,
+        ssh_user=ssh_user,
+        ssh_host=ssh_host,
+        ssh_port=ssh_port,
+        ssh_key_path=ssh_key_path,
+        use_ssh=use_ssh,
+        delete=delete,
+        dry_run=dry_run,
+    )

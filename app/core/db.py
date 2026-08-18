@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
+import json
 import threading
 from typing import Any, Optional
 import logging
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine
 
 from .models import Base, Photo, PhotoTag, ScanJob, Tag
+from .util import utc_now_iso
 from ..services.scanner import PhotoRecord
 
 logger = logging.getLogger(__name__)
@@ -126,7 +128,14 @@ def upsert_photo(session: Session, rec: PhotoRecord) -> str:
     return str(existing)
 
 
-def create_job(session: Session, *, job_id: str, year: int | None, job_type: str | None = None) -> None:
+def create_job(
+    session: Session,
+    *,
+    job_id: str,
+    year: int | None,
+    job_type: str | None = None,
+    params: dict[str, object] | None = None,
+) -> None:
     session.add(
         ScanJob(
             job_id=job_id,
@@ -141,12 +150,53 @@ def create_job(session: Session, *, job_id: str, year: int | None, job_type: str
             started_at=None,
             finished_at=None,
             message=None,
+            params=(json.dumps(params, ensure_ascii=False) if params else None),
+            created_at=utc_now_iso(),
         )
     )
 
 
 def get_job(session: Session, job_id: str) -> ScanJob | None:
     return session.get(ScanJob, job_id)
+
+
+def claim_next_queued_job(session: Session) -> tuple[str, str | None, dict[str, object]] | None:
+    """Atomically claim the oldest queued job and return its dispatch info."""
+    job = (
+        session.execute(
+            select(ScanJob)
+            .where(ScanJob.state == "queued")
+            .order_by(ScanJob.created_at.asc().nullsfirst(), ScanJob.job_id.asc())
+            .with_for_update()
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+    if job is None:
+        return None
+    job.state = "running"
+    job.started_at = utc_now_iso()
+    session.commit()
+    params: dict[str, object] = {}
+    if job.params:
+        try:
+            params = json.loads(job.params)
+        except Exception:
+            params = {}
+    return (str(job.job_id), job.job_type, params)
+
+
+def mark_stale_running_jobs_failed(session: Session) -> int:
+    """Mark any 'running' jobs as failed. Call once at worker startup."""
+    rows = session.execute(select(ScanJob).where(ScanJob.state == "running")).scalars().all()
+    for job in rows:
+        job.state = "failed"
+        job.finished_at = utc_now_iso()
+        job.message = "worker restarted while job was running"
+    if rows:
+        session.commit()
+    return len(rows)
 
 
 def fetch_photo(session: Session, guid: str) -> Optional[dict[str, Any]]:

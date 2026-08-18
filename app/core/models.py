@@ -126,7 +126,7 @@ class ScanJob(Base):
 
     job_id: Mapped[str] = mapped_column(Text, primary_key=True)
     state: Mapped[str] = mapped_column(Text, nullable=False)  # queued|running|done|failed
-    job_type: Mapped[str | None] = mapped_column(Text, nullable=True)  # ingest|validate
+    job_type: Mapped[str | None] = mapped_column(Text, nullable=True)  # ingest|validate|phone_sync|phone_reconcile|delete_photos|backup
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -138,3 +138,9 @@ class ScanJob(Base):
     started_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     finished_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    params: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+Index("idx_scan_jobs_state_created", ScanJob.state, ScanJob.created_at)

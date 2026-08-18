@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import base64
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 
@@ -50,3 +51,7 @@ def b64decode_cursor(cursor: str) -> tuple[str, str]:
         raise
     except Exception:
         raise HTTPException(status_code=400, detail="invalid cursor")
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()

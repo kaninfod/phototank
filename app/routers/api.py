@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -20,7 +19,7 @@ from ..core.db import (
     tags_for_photo,
 )
 from ..services.derivatives import mid_path, thumb_path
-from ..jobs import new_job_id, run_delete_photos_job, run_phone_reconcile_job, run_phone_sync_job
+from ..jobs import new_job_id
 from ..core.models import Photo
 from ..core.router_helpers import ensure_deriv_root, ensure_dirs_and_db, settings_or_500
 from ..core.util import normalize_guid, resolve_relpath_under
@@ -62,14 +61,19 @@ class PhoneReconcileStartRequest(BaseModel):
     ssh_port: int | None = Field(None, ge=1, le=65535)
     ssh_key_path: str | None = None
 
+
+class BackupStartRequest(BaseModel):
+    dest: str | None = None
+    ssh_user: str | None = None
+    host: str | None = None
+    ssh_port: int | None = Field(None, ge=1, le=65535)
+    ssh_key_path: str | None = None
+    dry_run: bool = False
+
+
 api_router = APIRouter()
 
 logger = logging.getLogger(__name__)
-
-
-def _start_job_thread(target, /, *args, **kwargs) -> None:
-    t = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
-    t.start()
 
 
 @api_router.get("/thumb/{guid}")
@@ -179,18 +183,22 @@ def delete_photos(req: DeleteRequest):
 
     # Create job
     job_id = new_job_id()
+    normalized_guids = [normalize_guid(g) for g in req.guids]
     with SessionLocal() as session:
         with session.begin():
-            create_job(session, job_id=job_id, year=None, job_type="delete_photos")
+            create_job(
+                session,
+                job_id=job_id,
+                year=None,
+                job_type="delete_photos",
+                params={"guids": normalized_guids},
+            )
         session.commit()
-
-    # Start job in background thread
-    _start_job_thread(run_delete_photos_job, job_id, guids=req.guids)
 
     return {
         "job_id": job_id,
-        "requested": len(req.guids),
-        "status": "Job started"
+        "requested": len(normalized_guids),
+        "status": "queued"
     }
 
 
@@ -307,19 +315,21 @@ def start_phone_sync(req: PhoneSyncStartRequest):
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
-            create_job(session, job_id=job_id, year=None, job_type="phone_sync")
+            create_job(
+                session,
+                job_id=job_id,
+                year=None,
+                job_type="phone_sync",
+                params={
+                    "ssh_user": ssh_user,
+                    "phone_ip": ip,
+                    "ssh_port": ssh_port,
+                    "remote_source_path": remote_source_path,
+                    "remote_dest_path": remote_dest_path,
+                    "ssh_key_path": str(ssh_key_path),
+                },
+            )
         session.commit()
-
-    _start_job_thread(
-        run_phone_sync_job,
-        job_id,
-        ssh_user=ssh_user,
-        phone_ip=ip,
-        ssh_port=ssh_port,
-        remote_source_path=remote_source_path,
-        remote_dest_path=remote_dest_path,
-        ssh_key_path=ssh_key_path,
-    )
 
     return {
         "job_id": job_id,
@@ -359,18 +369,20 @@ def start_phone_reconcile(req: PhoneReconcileStartRequest):
     job_id = new_job_id()
     with SessionLocal() as session:
         with session.begin():
-            create_job(session, job_id=job_id, year=None, job_type="phone_reconcile")
+            create_job(
+                session,
+                job_id=job_id,
+                year=None,
+                job_type="phone_reconcile",
+                params={
+                    "ssh_user": ssh_user,
+                    "phone_ip": ip,
+                    "ssh_port": ssh_port,
+                    "remote_dest_path": remote_dest_path,
+                    "ssh_key_path": str(ssh_key_path),
+                },
+            )
         session.commit()
-
-    _start_job_thread(
-        run_phone_reconcile_job,
-        job_id,
-        ssh_user=ssh_user,
-        phone_ip=ip,
-        ssh_port=ssh_port,
-        remote_dest_path=remote_dest_path,
-        ssh_key_path=ssh_key_path,
-    )
 
     return {
         "job_id": job_id,
@@ -381,6 +393,68 @@ def start_phone_reconcile(req: PhoneReconcileStartRequest):
         "ssh_user": ssh_user,
         "ssh_port": ssh_port,
         "ssh_key_path": str(ssh_key_path),
+    }
+
+
+@api_router.post("/jobs/backup/start")
+def start_backup(req: BackupStartRequest):
+    settings = settings_or_500()
+    ensure_dirs_and_db(settings.photo_root, settings.db_path)
+    ensure_deriv_root(settings.deriv_root)
+
+    dest_value = (req.dest or settings.backup_dest_path or "").strip()
+    user_value = (req.ssh_user or settings.backup_ssh_user or "").strip() or None
+    host_value = (req.host or settings.backup_host or "").strip() or None
+    ssh_port = int(req.ssh_port or settings.backup_port)
+    ssh_key_path_raw = (req.ssh_key_path or str(settings.backup_ssh_key_path)).strip()
+    ssh_key_path = Path(ssh_key_path_raw).expanduser()
+
+    if not dest_value:
+        raise HTTPException(status_code=400, detail="missing backup destination")
+
+    use_ssh = bool(user_value and host_value)
+    if use_ssh and not ssh_key_path.exists():
+        raise HTTPException(status_code=400, detail=f"backup ssh key not found: {ssh_key_path}")
+
+    dest_value = dest_value.rstrip("/")
+    if use_ssh:
+        dest_value = f"{user_value}@{host_value}:{dest_value}"
+
+    SessionLocal = sessionmaker_for(settings.db_path)
+
+    job_id = new_job_id()
+    with SessionLocal() as session:
+        with session.begin():
+            create_job(
+                session,
+                job_id=job_id,
+                year=None,
+                job_type="backup",
+                params={
+                    "backup_sources": [
+                        str(settings.photo_root.resolve()),
+                        str(settings.deriv_root.resolve()),
+                        str(settings.db_path.resolve()),
+                    ],
+                    "dest": dest_value,
+                    "ssh_user": user_value,
+                    "ssh_host": host_value,
+                    "ssh_port": ssh_port,
+                    "ssh_key_path": str(ssh_key_path),
+                    "use_ssh": use_ssh,
+                    "delete": True,
+                    "dry_run": bool(req.dry_run),
+                },
+            )
+        session.commit()
+
+    return {
+        "job_id": job_id,
+        "job_type": "backup",
+        "state": "queued",
+        "dest": dest_value,
+        "use_ssh": use_ssh,
+        "dry_run": bool(req.dry_run),
     }
 
 

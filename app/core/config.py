@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     phone_sync_dest_path: str | None = None
     phone_sync_ssh_key_path: Path = Path("~/.ssh/id_ed25519")
 
+    backup_enabled: bool = False
+    backup_interval_hours: int = 24
+    backup_run_time: str | None = "02:00"  # HH:MM in local/server timezone
+    backup_ssh_user: str | None = None
+    backup_host: str | None = None
+    backup_port: int = 22
+    backup_ssh_key_path: Path = Path("~/.ssh/id_ed25519")
+    backup_dest_path: str | None = None  # destination folder, e.g. /backup/phototank or user@host:/backup/phototank
+
     @model_validator(mode="after")
     def _resolve_relative_paths(self):
         # Resolve relative paths from the project root so uvicorn cwd doesn't matter.
@@ -80,6 +89,8 @@ class Settings(BaseSettings):
             self.log_syslog_path = resolve_under(repo_root, self.log_syslog_path)
         if self.phone_sync_ssh_key_path is not None:
             self.phone_sync_ssh_key_path = self.phone_sync_ssh_key_path.expanduser()
+        if self.backup_ssh_key_path is not None:
+            self.backup_ssh_key_path = self.backup_ssh_key_path.expanduser()
         return self
 
     def extensions_set(self) -> set[str]:
